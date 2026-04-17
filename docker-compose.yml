@@ -1,14 +1,19 @@
+version: "3.9"
+
 services:
   lais-bot:
     build: .
     container_name: lais-bot
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
+    restart: always
     env_file:
       - .env
     volumes:
       - ./logs:/app/logs
     extra_hosts:
-      # Permite que o container acesse o PostgreSQL que roda no próprio VPS
       - "host.docker.internal:host-gateway"
+    networks:
+      - docker_internal
+
+networks:
+  docker_internal:
+    external: true
