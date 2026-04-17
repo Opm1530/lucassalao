@@ -1,0 +1,428 @@
+[
+  {
+    "phone": "5511999@s.whatsapp.net",
+    "direction": "in",
+    "content": "Oi",
+    "created_at": 1775644163
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Bom dia",
+    "created_at": 1775645786
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Tudo bem?",
+    "created_at": 1775645787
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Bom dia",
+    "created_at": 1775645902
+  },
+  {
+    "phone": "64999211520",
+    "direction": "in",
+    "content": "Bom dia",
+    "created_at": 1775646021
+  },
+  {
+    "phone": "64999211520",
+    "direction": "in",
+    "content": "oi",
+    "created_at": 1775646076
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Bom dia",
+    "created_at": 1775646128
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Tudo bem?",
+    "created_at": 1775646130
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Oiê, tudo bem?",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Seja muito bem-vinda ao Studio Lucas Rocha, nós somos responsáveis pelo setor de cabelo do Lara Morais Espaço de Beleza. ✂️",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Aqui é a Laís, secretária do Lucas. Pra gente poder facilitar seu atendimento, informa pra gente:",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Seu nome completo",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠O procedimento desejado",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Disponibilidade de dia e horário",
+    "created_at": 1775646137
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Oiê, tudo bem?",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Seja muito bem-vinda ao Studio Lucas Rocha, nós somos responsáveis pelo setor de cabelo do Lara Morais Espaço de Beleza. ✂️",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Aqui é a Laís, secretária do Lucas. Pra gente poder facilitar seu atendimento, informa pra gente:",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Seu nome completo",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠O procedimento desejado",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Disponibilidade de dia e horário",
+    "created_at": 1775646138
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Tá tendo horário para hoje?",
+    "created_at": 1775646262
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Claro, podemos verificar a disponibilidade para hoje.",
+    "created_at": 1775646266
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Qual horário você prefere? Assim posso confirmar se está disponível.",
+    "created_at": 1775646266
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "15",
+    "created_at": 1775646272
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Entendi, você gostaria de agendar para as 15:00.",
+    "created_at": 1775646276
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Qual serviço você deseja realizar? Temos Corte Feminino, Escova Progressiva, Coloração, Hidratação e Corte Masculino disponíveis.",
+    "created_at": 1775646276
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Escova",
+    "created_at": 1775646282
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Atualmente, não oferecemos o serviço de escova.",
+    "created_at": 1775646287
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Temos disponíveis Corte Feminino, Escova Progressiva, Coloração, Hidratação e Corte Masculino.",
+    "created_at": 1775646287
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Gostaria de agendar algum desses serviços?",
+    "created_at": 1775646287
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Escova Progressiva",
+    "created_at": 1775646296
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "A Escova Progressiva está R$ 280,00. Se o pagamento for no Pix, você tem 5% de desconto.",
+    "created_at": 1775646300
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Vou verificar a disponibilidade para hoje às 15:00 e já te confirmo.",
+    "created_at": 1775646300
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Bom dia",
+    "created_at": 1775646329
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Tudo bem?",
+    "created_at": 1775646331
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Oiê, tudo bem?\n\nSeja muito bem-vinda ao Studio Lucas Rocha, nós somos responsáveis pelo setor de cabelo do Lara Morais Espaço de Beleza. ✂️\n\nAqui é a Laís, secretária do Lucas. Pra gente poder facilitar seu atendimento, informa pra gente:\n\n•⁠  ⁠Seu nome completo\n\n•⁠  ⁠O procedimento desejado\n\n•⁠  ⁠Disponibilidade de dia e horário",
+    "created_at": 1775646334
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Oiê, tudo bem?",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Seja muito bem-vinda ao Studio Lucas Rocha, nós somos responsáveis pelo setor de cabelo do Lara Morais Espaço de Beleza. ✂️",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Aqui é a Laís, secretária do Lucas. Pra gente poder facilitar seu atendimento, informa pra gente:",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Seu nome completo",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠O procedimento desejado",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Disponibilidade de dia e horário",
+    "created_at": 1775646338
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Bom dia\nTudo bem?",
+    "created_at": 1775647123
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Oiê, tudo bem?",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Seja muito bem-vinda ao Studio Lucas Rocha, nós somos responsáveis pelo setor de cabelo do Lara Morais Espaço de Beleza. ✂️",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Aqui é a Laís, secretária do Lucas. Pra gente poder facilitar seu atendimento, informa pra gente:",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Seu nome completo",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠O procedimento desejado",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "•⁠  ⁠Disponibilidade de dia e horário",
+    "created_at": 1775647131
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Ginany Moreira Crescencio",
+    "created_at": 1775647147
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Escova progressiva",
+    "created_at": 1775647152
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Obrigada, Ginany.",
+    "created_at": 1775647153
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Qual procedimento você gostaria de agendar?",
+    "created_at": 1775647153
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "E qual a sua disponibilidade de dia e horário?",
+    "created_at": 1775647153
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Ótima escolha! A escova progressiva está R$ 280,00.",
+    "created_at": 1775647155
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Se o pagamento for no Pix, você tem 5% de desconto.",
+    "created_at": 1775647155
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Qual dia e horário você prefere? 😊",
+    "created_at": 1775647155
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Hoje às 15",
+    "created_at": 1775647167
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Perfeito, vou verificar a disponibilidade para hoje às 15:00.",
+    "created_at": 1775647170
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Só um instante.",
+    "created_at": 1775647170
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Podemos marcar?",
+    "created_at": 1775647253
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Sim, podemos marcar!",
+    "created_at": 1775647258
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Mais algum serviço que posso agendar para você? 😊",
+    "created_at": 1775647258
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Somente",
+    "created_at": 1775647265
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Ótimo! Vamos confirmar então.",
+    "created_at": 1775647271
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Escova Progressiva para hoje às 15:00.",
+    "created_at": 1775647271
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Certo?",
+    "created_at": 1775647271
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "in",
+    "content": "Isso",
+    "created_at": 1775647277
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Agendamento confirmado!",
+    "created_at": 1775647288
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Nos vemos hoje às 15:00 para a sua escova progressiva.",
+    "created_at": 1775647288
+  },
+  {
+    "phone": "556499211520@s.whatsapp.net",
+    "direction": "out",
+    "content": "Não há de que!",
+    "created_at": 1775647288
+  }
+]
