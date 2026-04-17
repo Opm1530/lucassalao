@@ -1,0 +1,13 @@
+{
+  "bot_active": "true",
+  "openai_model": "gpt-4o",
+  "trinks_base_url": "https://api.trinks.com",
+  "evolution_url": "https://evolution.vps.pequi.digital/",
+  "evolution_api_key": "1120d381afc6900754fc87d8264ed6335aeab3223b4d24810a17145399c16e46",
+  "max_history": "20",
+  "evolution_instance": "studio-lucas",
+  "bot_name": "Lais",
+  "salon_name": "Studio Lucas Rocha",
+  "openai_api_key": "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",
+  "demo_mode": "true"
+}

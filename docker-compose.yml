@@ -1,0 +1,14 @@
+services:
+  lais-bot:
+    build: .
+    container_name: lais-bot
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    extra_hosts:
+      # Permite que o container acesse o PostgreSQL que roda no próprio VPS
+      - "host.docker.internal:host-gateway"

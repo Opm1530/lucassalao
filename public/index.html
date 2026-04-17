@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title id="pageTitle">IA Agendamento</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f13;
+      --surface: #18181f;
+      --surface2: #1e1e27;
+      --border: #2a2a38;
+      --accent: #7c5cbf;
+      --accent-light: #9b7de0;
+      --accent-dim: rgba(124,92,191,0.15);
+      --green: #4ade80;
+      --red: #f87171;
+      --yellow: #facc15;
+      --text: #e8e8f0;
+      --text-muted: #8888a8;
+      --radius: 12px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ─── Layout ─── */
+    .shell {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0;
+      flex-shrink: 0;
+    }
+
+    .sidebar-logo {
+      padding: 0 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-logo h1 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-light);
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-logo p {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .nav {
+      padding: 16px 0;
+      flex: 1;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 20px;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 14px;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .nav-item:hover {
+      color: var(--text);
+      background: var(--surface2);
+    }
+
+    .nav-item.active {
+      color: var(--accent-light);
+      border-left-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .nav-item svg { flex-shrink: 0; }
+
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .bot-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+
+    .bot-toggle span { color: var(--text-muted); }
+
+    .toggle-switch {
+      position: relative;
+      width: 42px;
+      height: 24px;
+    }
+
+    .toggle-switch input { display: none; }
+
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: #333;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+
+    .toggle-switch input:checked + .toggle-track { background: var(--accent); }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(18px); }
+
+    /* ─── Main ─── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .topbar {
+      height: 60px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 28px;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+
+    .topbar-title {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .badge.green { background: rgba(74,222,128,0.12); color: var(--green); }
+    .badge.red { background: rgba(248,113,113,0.12); color: var(--red); }
+    .badge.yellow { background: rgba(250,204,21,0.12); color: var(--yellow); }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 28px;
+    }
+
+    /* ─── Tabs ─── */
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* ─── Cards ─── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 18px;
+    }
+
+    /* ─── Form ─── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-group.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    input, select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    input:focus, select:focus { border-color: var(--accent); }
+    select option { background: var(--surface2); }
+
+    /* ─── Buttons ─── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover { background: var(--accent-light); }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent-light); }
+
+    .btn-danger {
+      background: rgba(248,113,113,0.12);
+      color: var(--red);
+      border: 1px solid rgba(248,113,113,0.3);
+    }
+
+    .btn-danger:hover { background: rgba(248,113,113,0.25); }
+
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+    /* ─── Alert ─── */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .alert.show { display: block; }
+    .alert-success { background: rgba(74,222,128,0.1); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+    .alert-error { background: rgba(248,113,113,0.1); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
+
+    /* ─── WhatsApp ─── */
+    .qr-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px;
+      gap: 16px;
+    }
+
+    .qr-box img {
+      width: 220px;
+      height: 220px;
+      border-radius: 12px;
+      border: 4px solid var(--border);
+    }
+
+    .qr-box p { font-size: 14px; color: var(--text-muted); text-align: center; }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 0;
+    }
+
+    .status-label { font-size: 14px; }
+
+    /* ─── Conversations ─── */
+    .conv-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .conv-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border-radius: 10px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: border-color 0.15s;
+    }
+
+    .conv-item:hover { border-color: var(--accent); }
+
+    .conv-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent-light);
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .conv-info { flex: 1; min-width: 0; }
+
+    .conv-phone { font-size: 14px; font-weight: 500; }
+
+    .conv-last {
+      font-size: 12px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+
+    .conv-meta {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .conv-time { font-size: 11px; color: var(--text-muted); }
+
+    /* ─── Chat detail ─── */
+    .chat-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .chat-modal.open { display: flex; }
+
+    .chat-box {
+      width: 600px;
+      max-width: 95vw;
+      max-height: 80vh;
+      background: var(--surface);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border);
+    }
+
+    .chat-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .chat-header h3 { font-size: 14px; }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .msg {
+      display: flex;
+      flex-direction: column;
+      max-width: 78%;
+    }
+
+    .msg.in { align-self: flex-start; }
+    .msg.out { align-self: flex-end; }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .msg.in .msg-bubble { background: var(--surface2); border: 1px solid var(--border); }
+    .msg.out .msg-bubble { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent-light); }
+
+    .msg-time { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .msg.out .msg-time { text-align: right; }
+
+    .chat-footer {
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    /* ─── Scrollbar ─── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ─── Divider ─── */
+    .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+    .empty { text-align: center; color: var(--text-muted); padding: 40px; font-size: 14px; }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 640px) {
+      .sidebar { width: 60px; }
+      .sidebar-logo, .nav-item span { display: none; }
+      .nav-item { justify-content: center; padding: 12px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h1 id="sidebarBotName">✂️ Bot</h1>
+      <p id="sidebarSalonName">Salão</p>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-item active" onclick="switchTab('configuracoes', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>Configurações</span>
+      </div>
+
+      <div class="nav-item" onclick="switchTab('whatsapp', this)">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span>WhatsApp</span>
+      </div>
+
+      <div class="nav-item" onclick="switchTab('prompt', this); loadPrompt()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        </svg>
+        <span>Prompt</span>
+      </div>
+
+<div class="nav-item" onclick="switchTab('conversas', this); loadConversations()">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <span>Conversas</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="bot-toggle">
+        <span>Bot ativo</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="botToggle" onchange="toggleBot(this)" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div class="bot-toggle" style="margin-top:10px;">
+        <span style="color:var(--yellow);">Modo demo</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="demoToggle" onchange="toggleDemo(this)" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div id="demoBadge" style="display:none; margin-top:8px; font-size:11px; color:var(--yellow); background:rgba(250,204,21,0.1); border-radius:6px; padding:4px 8px; text-align:center;">
+        ⚠️ Trinks simulado
+      </div>
+      <button onclick="logout()" style="margin-top:14px; width:100%; background:transparent; border:1px solid #333; border-radius:8px; color:#888; font-size:12px; padding:8px; cursor:pointer; transition:all 0.2s;" onmouseover="this.style.borderColor='#555';this.style.color='#ccc'" onmouseout="this.style.borderColor='#333';this.style.color='#888'">
+        Sair
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbarTitle">Configurações</span>
+      <span id="whatsappStatus" class="badge yellow"><span class="dot"></span> Verificando...</span>
+    </div>
+
+    <div class="content">
+
+      <!-- ─── Configurações ─── -->
+      <div class="tab-pane active" id="tab-configuracoes">
+        <div id="configAlert" class="alert"></div>
+
+        <!-- Identidade -->
+        <div class="card">
+          <div class="card-title">Identidade do Bot</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Nome da atendente</label>
+              <input type="text" id="bot_name" placeholder="Lais" />
+            </div>
+            <div class="form-group">
+              <label>Nome do salão</label>
+              <input type="text" id="salon_name" placeholder="Studio Lucas Rocha" />
+            </div>
+          </div>
+        </div>
+
+        <!-- OpenAI -->
+        <div class="card">
+          <div class="card-title">OpenAI</div>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>API Key</label>
+              <input type="password" id="openai_api_key" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label>Modelo</label>
+              <select id="openai_model">
+                <option value="gpt-4o">gpt-4o (recomendado)</option>
+                <option value="gpt-4o-mini">gpt-4o-mini (mais rápido)</option>
+                <option value="gpt-4-turbo">gpt-4-turbo</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Máx. histórico de mensagens</label>
+              <input type="number" id="max_history" placeholder="20" min="5" max="50" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Trinks -->
+        <div class="card">
+          <div class="card-title">Trinks</div>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>URL Base da API</label>
+              <input type="text" id="trinks_base_url" placeholder="https://api.trinks.com" />
+            </div>
+            <div class="form-group">
+              <label>API Key (X-Api-Key)</label>
+              <input type="password" id="trinks_api_key" placeholder="Sua chave de API" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label>Estabelecimento ID</label>
+              <input type="text" id="trinks_estabelecimento_id" placeholder="ID do seu estabelecimento" />
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <button class="btn btn-outline btn-sm" onclick="testTrinks()">Testar conexão Trinks</button>
+            <span id="trinksTestResult" style="margin-left: 12px; font-size: 13px;"></span>
+          </div>
+        </div>
+
+        <!-- Evolution -->
+        <div class="card">
+          <div class="card-title">Evolution API (WhatsApp)</div>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>URL do Evolution (seu VPS)</label>
+              <input type="text" id="evolution_url" placeholder="http://SEU_VPS:8080" />
+            </div>
+            <div class="form-group">
+              <label>API Key</label>
+              <input type="password" id="evolution_api_key" placeholder="Chave global do Evolution" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label>Nome da Instância</label>
+              <input type="text" id="evolution_instance" placeholder="studio-lucas-rocha" />
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn-primary" onclick="saveConfig()">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Salvar configurações
+          </button>
+        </div>
+      </div>
+
+      <!-- ─── WhatsApp ─── -->
+      <div class="tab-pane" id="tab-whatsapp">
+        <!-- Connection status -->
+        <div class="card">
+          <div class="card-title">Status da conexão</div>
+          <div class="status-row">
+            <span class="badge yellow" id="connBadge"><span class="dot"></span> Verificando...</span>
+            <span class="status-label" id="connInstance">—</span>
+          </div>
+          <div class="row" style="margin-top: 8px;">
+            <button class="btn btn-outline btn-sm" onclick="refreshStatus()">Atualizar status</button>
+            <button class="btn btn-danger btn-sm" onclick="logoutWA()">Desconectar</button>
+          </div>
+        </div>
+
+        <!-- QR Code -->
+        <div class="card">
+          <div class="card-title">Conectar WhatsApp</div>
+          <div class="qr-box" id="qrBox">
+            <p>Clique no botão abaixo para gerar o QR Code</p>
+            <button class="btn btn-primary" onclick="loadQR()">Gerar QR Code</button>
+          </div>
+        </div>
+
+        <!-- Criar instância -->
+        <div class="card">
+          <div class="card-title">Criar nova instância</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Nome da instância</label>
+              <input type="text" id="newInstanceName" placeholder="studio-lucas-rocha" />
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <button class="btn btn-outline" onclick="createInstance()">Criar instância</button>
+          </div>
+          <div id="instanceResult" style="margin-top: 10px; font-size: 13px;"></div>
+        </div>
+
+        <!-- Configurar webhook -->
+        <div class="card">
+          <div class="card-title">Configurar Webhook no Evolution</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Configure a URL abaixo no Evolution para que as mensagens cheguem ao bot.
+          </p>
+          <div class="form-grid">
+            <div class="form-group full">
+              <label>URL do Webhook</label>
+              <input type="text" id="webhookUrl" placeholder="http://SEU_IP:3000/webhook/evolution" />
+            </div>
+          </div>
+          <div style="margin-top: 14px;">
+            <button class="btn btn-primary" onclick="setWebhook()">Configurar webhook</button>
+            <span id="webhookResult" style="margin-left: 12px; font-size: 13px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Prompt ─── -->
+      <div class="tab-pane" id="tab-prompt">
+        <div class="card">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;">
+            <div class="card-title" style="margin-bottom:0;">Prompt da Lais</div>
+            <div class="row">
+              <button class="btn btn-danger btn-sm" onclick="resetPrompt()">Restaurar padrão</button>
+              <button class="btn btn-primary btn-sm" onclick="savePrompt()">Salvar</button>
+            </div>
+          </div>
+          <div id="promptAlert" class="alert"></div>
+          <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">
+            Edite o prompt do sistema da Lais. As mudanças entram em vigor imediatamente na próxima mensagem recebida.
+          </p>
+          <textarea
+            id="promptEditor"
+            spellcheck="false"
+            style="
+              width:100%; min-height:520px; background:var(--surface2);
+              border:1px solid var(--border); border-radius:8px;
+              padding:16px; color:var(--text); font-size:13px;
+              font-family:'SF Mono','Fira Code',monospace; line-height:1.6;
+              resize:vertical; outline:none; tab-size:2;
+            "
+            placeholder="Carregando prompt..."
+          ></textarea>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
+            <span style="font-size:12px; color:var(--text-muted);" id="promptCharCount"></span>
+            <button class="btn btn-primary" onclick="savePrompt()">
+              <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+              Salvar prompt
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Conversas ─── -->
+      <div class="tab-pane" id="tab-conversas">
+        <div class="card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;">
+            <div class="card-title" style="margin-bottom: 0;">Conversas ativas</div>
+            <button class="btn btn-outline btn-sm" onclick="loadConversations()">Atualizar</button>
+          </div>
+          <div id="humanModeAlert" style="display:none;background:rgba(250,204,21,0.1);border:1px solid rgba(250,204,21,0.3);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--yellow);margin-bottom:16px;">
+            ⚠️ Conversas em <b>modo humano</b> não recebem resposta do bot até você clicar em "Devolver ao bot".
+          </div>
+          <div class="conv-list" id="convList">
+            <div class="empty">Carregando...</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- Chat detail modal -->
+<div class="chat-modal" id="chatModal">
+  <div class="chat-box">
+    <div class="chat-header">
+      <h3 id="chatPhone">—</h3>
+      <div class="row">
+        <span id="chatStage" class="badge yellow"></span>
+        <button id="btnReturnBot" class="btn btn-sm" onclick="returnToBot()"
+          style="display:none;background:rgba(74,222,128,0.12);color:var(--green);border:1px solid rgba(74,222,128,0.3);">
+          🤖 Devolver ao bot
+        </button>
+        <button id="btnSetHuman" class="btn btn-sm" onclick="setHumanMode()"
+          style="display:none;background:rgba(250,204,21,0.12);color:var(--yellow);border:1px solid rgba(250,204,21,0.3);">
+          👤 Passar p/ humano
+        </button>
+        <button class="btn btn-outline btn-sm" onclick="closeChat()">✕</button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-footer">
+      <span style="font-size: 12px; color: var(--text-muted);">Histórico somente leitura. Mensagens enviadas pelo cliente via WhatsApp.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+  let currentPhone = null;
+
+  // ─── Tab switching ────────────────────────────────────────────────────────
+  function switchTab(tab, el) {
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+    el.classList.add('active');
+    document.getElementById('topbarTitle').textContent =
+      { configuracoes: 'Configurações', whatsapp: 'WhatsApp', prompt: 'Prompt da Lais', conversas: 'Conversas' }[tab];
+  }
+
+  // ─── Config ───────────────────────────────────────────────────────────────
+  function applyIdentity(data) {
+    const name = data.bot_name || 'Lais';
+    const salon = data.salon_name || 'Studio Lucas Rocha';
+    document.getElementById('sidebarBotName').textContent = '✂️ ' + name + ' Bot';
+    document.getElementById('sidebarSalonName').textContent = salon;
+    document.getElementById('pageTitle').textContent = name + ' Bot — Dashboard';
+  }
+
+  async function loadConfig() {
+    const data = await api('/api/config/raw');
+    const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
+                    'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
+                    'evolution_url','evolution_api_key','evolution_instance'];
+    for (const f of fields) {
+      const el = document.getElementById(f);
+      if (el && data[f]) el.value = data[f];
+    }
+    document.getElementById('botToggle').checked = data.bot_active === 'true';
+    applyIdentity(data);
+  }
+
+  async function saveConfig() {
+    const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
+                    'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
+                    'evolution_url','evolution_api_key','evolution_instance'];
+    const body = {};
+    for (const f of fields) {
+      const el = document.getElementById(f);
+      if (el && el.value.trim()) body[f] = el.value.trim();
+    }
+    const r = await api('/api/config', { method: 'POST', body });
+    if (r.success) applyIdentity(body);
+    showAlert('configAlert', r.success ? 'Configurações salvas com sucesso!' : 'Erro ao salvar.', r.success);
+  }
+
+  async function testTrinks() {
+    const el = document.getElementById('trinksTestResult');
+    el.style.color = 'var(--text-muted)';
+    el.textContent = 'Testando...';
+    const r = await api('/api/trinks/test');
+    if (r.ok) {
+      el.style.color = 'var(--green)';
+      el.textContent = `✓ Conectado — ${r.servicos} serviços, ${r.profissionais} profissionais`;
+    } else {
+      el.style.color = 'var(--red)';
+      el.textContent = `✗ Erro: ${r.error}`;
+    }
+  }
+
+  async function toggleBot(el) {
+    const r = await api('/api/bot/toggle', { method: 'POST', body: {} });
+    el.checked = r.active;
+  }
+
+  async function toggleDemo(el) {
+    const r = await api('/api/demo/toggle', { method: 'POST', body: {} });
+    el.checked = r.demo;
+    applyDemoBadge(r.demo);
+  }
+
+  function applyDemoBadge(active) {
+    document.getElementById('demoBadge').style.display = active ? 'block' : 'none';
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }
+
+  async function loadDemoStatus() {
+    const r = await api('/api/demo/status');
+    document.getElementById('demoToggle').checked = r.demo;
+    applyDemoBadge(r.demo);
+  }
+
+  // ─── WhatsApp status ──────────────────────────────────────────────────────
+  async function refreshStatus() {
+    const r = await api('/api/status');
+    const badge = document.getElementById('whatsappStatus');
+    const connBadge = document.getElementById('connBadge');
+    const connInstance = document.getElementById('connInstance');
+
+    const stateMap = {
+      open: ['green', 'Conectado'],
+      connecting: ['yellow', 'Conectando...'],
+      close: ['red', 'Desconectado'],
+      error: ['red', 'Erro'],
+      unknown: ['yellow', 'Desconhecido'],
+    };
+    const [cls, label] = stateMap[r.state] || ['yellow', r.state];
+
+    badge.className = `badge ${cls}`;
+    badge.innerHTML = `<span class="dot"></span> ${label}`;
+    connBadge.className = `badge ${cls}`;
+    connBadge.innerHTML = `<span class="dot"></span> ${label}`;
+    connInstance.textContent = r.instance ? `Instância: ${r.instance}` : (r.error || '');
+  }
+
+  async function loadQR() {
+    const box = document.getElementById('qrBox');
+    box.innerHTML = '<p style="color:var(--text-muted)">Gerando QR Code...</p>';
+    try {
+      const r = await api('/api/qrcode');
+      if (r.base64) {
+        const src = r.base64.startsWith('data:') ? r.base64 : `data:image/png;base64,${r.base64}`;
+        box.innerHTML = `
+          <img src="${src}" alt="QR Code" />
+          <p>Abra o WhatsApp → Dispositivos conectados → Conectar dispositivo</p>
+          <button class="btn btn-outline btn-sm" onclick="loadQR()">Atualizar QR</button>
+        `;
+      } else {
+        box.innerHTML = '<p style="color:var(--green)">✓ WhatsApp já está conectado!</p><button class="btn btn-outline btn-sm" onclick="loadQR()">Verificar novamente</button>';
+      }
+    } catch (e) {
+      box.innerHTML = `<p style="color:var(--red)">Erro: ${e.message}</p><button class="btn btn-outline btn-sm" onclick="loadQR()">Tentar novamente</button>`;
+    }
+  }
+
+  async function createInstance() {
+    const name = document.getElementById('newInstanceName').value.trim();
+    if (!name) return alert('Informe o nome da instância');
+    const r = await api('/api/instance/create', { method: 'POST', body: { instanceName: name } });
+    const el = document.getElementById('instanceResult');
+    if (r.error) {
+      el.style.color = 'var(--red)';
+      el.textContent = `Erro: ${r.error}`;
+    } else {
+      el.style.color = 'var(--green)';
+      el.textContent = '✓ Instância criada! Vá em "Conectar WhatsApp" para escanear o QR Code.';
+      document.getElementById('evolution_instance').value = name;
+    }
+  }
+
+  async function logoutWA() {
+    if (!confirm('Deseja desconectar o WhatsApp desta instância?')) return;
+    await api('/api/instance/logout', { method: 'POST', body: {} });
+    refreshStatus();
+  }
+
+  async function setWebhook() {
+    const url = document.getElementById('webhookUrl').value.trim();
+    if (!url) return alert('Informe a URL do webhook');
+    const r = await api('/api/webhook/set', { method: 'POST', body: { webhookUrl: url } });
+    const el = document.getElementById('webhookResult');
+    if (r.success) {
+      el.style.color = 'var(--green)';
+      el.textContent = '✓ Webhook configurado com sucesso!';
+    } else {
+      el.style.color = 'var(--red)';
+      el.textContent = `Erro: ${r.error}`;
+    }
+  }
+
+  // ─── Conversations ────────────────────────────────────────────────────────
+  async function loadConversations() {
+    const list = document.getElementById('convList');
+    list.innerHTML = '<div class="empty">Carregando...</div>';
+    const data = await api('/api/conversations');
+    if (!Array.isArray(data) || data.length === 0) {
+      list.innerHTML = '<div class="empty">Nenhuma conversa ainda.</div>';
+      document.getElementById('humanModeAlert').style.display = 'none';
+      return;
+    }
+    const hasHuman = data.some(c => c.human_mode);
+    document.getElementById('humanModeAlert').style.display = hasHuman ? 'block' : 'none';
+
+    list.innerHTML = data.map(c => {
+      const phone = c.phone.replace('@s.whatsapp.net', '');
+      const time  = c.updated_at ? new Date(c.updated_at * 1000).toLocaleString('pt-BR') : '';
+      const last  = c.last_message ? truncate(c.last_message, 50) : '—';
+      const humanBadge = c.human_mode
+        ? `<span class="badge yellow" style="font-size:10px;">👤 humano</span>`
+        : '';
+      return `
+        <div class="conv-item" onclick="openChat('${escHtml(c.phone)}')">
+          <div class="conv-avatar">${c.human_mode ? '👤' : '💬'}</div>
+          <div class="conv-info">
+            <div class="conv-phone">${phone}</div>
+            <div class="conv-last">${last}</div>
+          </div>
+          <div class="conv-meta">
+            <span class="conv-time">${time}</span>
+            ${humanBadge || `<span class="badge ${stageBadge(c.stage)}">${c.stage || 'novo'}</span>`}
+            <button class="btn btn-danger btn-sm" style="padding:3px 8px;font-size:11px;margin-top:4px;"
+              onclick="event.stopPropagation(); resetConversation('${escHtml(c.phone)}')">
+              Resetar
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function openChat(phone) {
+    currentPhone = phone;
+    const data = await api(`/api/conversations/${encodeURIComponent(phone)}`);
+    document.getElementById('chatPhone').textContent = phone.replace('@s.whatsapp.net', '');
+    document.getElementById('chatStage').textContent = data.stage || 'novo';
+    document.getElementById('chatStage').className = `badge ${stageBadge(data.stage)}`;
+
+    // Mostrar/ocultar botão de modo humano
+    const returnBtn = document.getElementById('btnReturnBot');
+    const humanBtn  = document.getElementById('btnSetHuman');
+    if (data.human_mode) {
+      returnBtn.style.display = 'inline-flex';
+      humanBtn.style.display  = 'none';
+    } else {
+      returnBtn.style.display = 'none';
+      humanBtn.style.display  = 'inline-flex';
+    }
+
+    const msgs = document.getElementById('chatMessages');
+    msgs.innerHTML = '';
+    const logs = data.logs || [];
+    if (logs.length === 0) {
+      msgs.innerHTML = '<div class="empty">Nenhuma mensagem registrada.</div>';
+    } else {
+      [...logs].reverse().forEach(log => {
+        if (log.direction === 'system') {
+          const div = document.createElement('div');
+          div.style.cssText = 'font-size:11px;color:var(--text-muted);text-align:center;padding:2px 0;';
+          div.textContent = `— ${log.content} —`;
+          msgs.appendChild(div);
+          return;
+        }
+        const div = document.createElement('div');
+        div.className = `msg ${log.direction === 'in' ? 'in' : 'out'}`;
+        const t = log.created_at ? new Date(log.created_at * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+        div.innerHTML = `<div class="msg-bubble">${escHtml(log.content)}</div><div class="msg-time">${t}</div>`;
+        msgs.appendChild(div);
+      });
+      msgs.scrollTop = msgs.scrollHeight;
+    }
+    document.getElementById('chatModal').classList.add('open');
+  }
+
+  function closeChat() {
+    document.getElementById('chatModal').classList.remove('open');
+    currentPhone = null;
+  }
+
+  async function resetConversation(phone) {
+    if (!confirm(`Resetar conversa de ${phone.replace('@s.whatsapp.net', '')}?\n\nO histórico será apagado e a Lais vai recomeçar do zero.`)) return;
+    await api(`/api/conversations/${encodeURIComponent(phone)}`, { method: 'DELETE' });
+    if (currentPhone === phone) closeChat();
+    loadConversations();
+  }
+
+  async function returnToBot() {
+    if (!currentPhone) return;
+    await api(`/api/conversations/${encodeURIComponent(currentPhone)}/bot-mode`, { method: 'POST', body: {} });
+    closeChat();
+    loadConversations();
+  }
+
+  async function setHumanMode() {
+    if (!currentPhone) return;
+    await api(`/api/conversations/${encodeURIComponent(currentPhone)}/human-mode`, { method: 'POST', body: {} });
+    closeChat();
+    loadConversations();
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+  async function api(url, opts = {}) {
+    try {
+      const options = {
+        method: opts.method || 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      };
+      if (opts.body) options.body = JSON.stringify(opts.body);
+      const r = await fetch(url, options);
+      return r.json();
+    } catch (e) {
+      return { error: e.message };
+    }
+  }
+
+  function showAlert(id, msg, success) {
+    const el = document.getElementById(id);
+    el.textContent = msg;
+    el.className = `alert ${success ? 'alert-success' : 'alert-error'} show`;
+    setTimeout(() => el.classList.remove('show'), 4000);
+  }
+
+  function truncate(str, n) {
+    return str.length > n ? str.substring(0, n) + '...' : str;
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function stageBadge(stage) {
+    const map = {
+      fechado: 'red', humano: 'yellow', novo: 'yellow',
+      aguardando_confirmacao_disponibilidade: 'green',
+      agendamento_em_montagem: 'green',
+    };
+    return map[stage] || 'yellow';
+  }
+
+  // ─── Prompt ───────────────────────────────────────────────────────────────
+  async function loadPrompt() {
+    const editor = document.getElementById('promptEditor');
+    editor.value = 'Carregando...';
+    const r = await api('/api/prompt');
+    editor.value = r.prompt || '';
+    updateCharCount();
+  }
+
+  async function savePrompt() {
+    const prompt = document.getElementById('promptEditor').value;
+    const r = await api('/api/prompt', { method: 'POST', body: { prompt } });
+    showAlert('promptAlert', r.success ? 'Prompt salvo com sucesso!' : `Erro: ${r.error}`, !!r.success);
+  }
+
+  async function resetPrompt() {
+    if (!confirm('Restaurar o prompt original? As alterações serão perdidas.')) return;
+    const r = await api('/api/prompt/reset', { method: 'POST', body: {} });
+    if (r.prompt) {
+      document.getElementById('promptEditor').value = r.prompt;
+      updateCharCount();
+      showAlert('promptAlert', 'Prompt restaurado para o padrão.', true);
+    }
+  }
+
+  function updateCharCount() {
+    const editor = document.getElementById('promptEditor');
+    const el = document.getElementById('promptCharCount');
+    if (editor && el) el.textContent = `${editor.value.length.toLocaleString('pt-BR')} caracteres`;
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const editor = document.getElementById('promptEditor');
+    if (editor) editor.addEventListener('input', updateCharCount);
+  });
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  loadConfig();
+  refreshStatus();
+  loadDemoStatus();
+  setInterval(refreshStatus, 30000); // auto-refresh status every 30s
+</script>
+</body>
+</html>
