@@ -141,8 +141,15 @@ async function processMessage(phone, text, isLatest = () => true) {
   // Contexto Trinks
   let context;
   try {
+    // Tenta extrair data do texto (DD/MM ou DD/MM/AAAA)
+    let requestedDate = null;
     const dateMatch = text.match(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/);
-    const requestedDate = dateMatch ? parseDate(dateMatch[0]) : null;
+    if (dateMatch) {
+      requestedDate = parseDate(dateMatch[0]);
+    } else {
+      // Tenta detectar dia da semana no texto e converter para data
+      requestedDate = parseDiaSemana(text);
+    }
     context = await trinksService.buildContext(phone, requestedDate);
   } catch (err) {
     console.error('[Bot] Erro Trinks:', err.message);
@@ -150,7 +157,7 @@ async function processMessage(phone, text, isLatest = () => true) {
       isCustomer: false,
       lead: { clienteId: null, clienteNome: null, clienteWhatsApp: phone.replace('@s.whatsapp.net', ''), clienteEmail: null, agendamentos: [] },
       servicos: [], profissionais: [],
-      loja: { estabelecimentoId: null, horariosOcupados: [] },
+      loja: { estabelecimentoId: null, disponibilidade: {} },
     };
   }
 
@@ -275,20 +282,28 @@ async function processMessage(phone, text, isLatest = () => true) {
       }
     }
   } else if (acao === 'cancelar_agendamento') {
-    // Suporta cancelar um ou múltiplos: agendamento_cancelar pode ser objeto {id} ou array [{id},{id}]
     const ids = Array.isArray(agendamento_cancelar)
       ? agendamento_cancelar.map(a => a.id).filter(Boolean)
       : agendamento_cancelar?.id ? [agendamento_cancelar.id] : [];
 
+    let cancelouTodos = true;
     for (const id of ids) {
       try {
         await trinksService.cancelarAgendamento(id);
-        console.log(`[Bot] Agendamento ${id} marcado como faltou`);
+        console.log(`[Bot] Agendamento ${id} cancelado`);
       } catch (err) {
         console.error(`[Bot] Erro ao cancelar agendamento ${id}:`, err.message);
+        cancelouTodos = false;
       }
     }
+
     await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
+
+    if (!cancelouTodos) {
+      mensagens.length = 0;
+      mensagens.push('Tive um problema ao tentar cancelar seu horário. 😔');
+      mensagens.push('Por favor, entre em contato diretamente com o salão para garantir o cancelamento!');
+    }
   } else if (acao !== 'criar_cliente') {
     await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
   }
@@ -330,6 +345,22 @@ function parseDate(str) {
   const month = parts[1].padStart(2, '0');
   const year  = parts[2] ? (parts[2].length === 2 ? `20${parts[2]}` : parts[2]) : new Date().getFullYear().toString();
   return `${year}-${month}-${day}`;
+}
+
+// Detecta dia da semana no texto e retorna a próxima ocorrência em AAAA-MM-DD
+function parseDiaSemana(text) {
+  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const dias = { 'segunda': 1, 'terca': 2, 'quarta': 3, 'quinta': 4, 'sexta': 5, 'sabado': 6, 'domingo': 0 };
+  for (const [nome, diaSemana] of Object.entries(dias)) {
+    if (lower.includes(nome)) {
+      const hoje = new Date();
+      const diff = (diaSemana - hoje.getDay() + 7) % 7 || 7; // próxima ocorrência (nunca hoje)
+      const alvo = new Date(hoje);
+      alvo.setDate(hoje.getDate() + diff);
+      return alvo.toISOString().split('T')[0];
+    }
+  }
+  return null;
 }
 
 function buildISODate(dataStr, horario) {

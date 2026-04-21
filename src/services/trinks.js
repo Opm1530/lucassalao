@@ -88,11 +88,11 @@ function ensureArray(data) {
   return [];
 }
 
-// Simple in-memory cache for services and professionals (5 min TTL)
+// In-memory cache — serviços/profissionais: 5 min, disponibilidade: 10 min
 const cache = new Map();
-function fromCache(key) {
+function fromCache(key, ttlMs = 5 * 60 * 1000) {
   const entry = cache.get(key);
-  if (entry && Date.now() - entry.ts < 5 * 60 * 1000) return entry.data;
+  if (entry && Date.now() - entry.ts < ttlMs) return entry.data;
   return null;
 }
 function toCache(key, data) {
@@ -302,14 +302,19 @@ async function listarAgendamentosCliente(clienteId) {
 }
 
 async function listarDisponibilidade(data) {
-  // A API retorna horariosVagos (livres) por profissional — usamos isso diretamente
+  const cacheKey = `disp_${data}`;
+  const cached = fromCache(cacheKey, 10 * 60 * 1000); // cache 10 min
+  if (cached) return cached;
+
   if (isDemoMode()) {
-    return [{
+    const result = [{
       profissionalId: 1,
       profissionalNome: 'Lucas Rocha',
       horariosDisponiveis: ['09:00','09:30','10:00','10:30','11:00','14:00','14:30','15:00','15:30','16:00'],
       data,
     }];
+    toCache(cacheKey, result);
+    return result;
   }
 
   const client = getClient();
@@ -319,12 +324,14 @@ async function listarDisponibilidade(data) {
     });
 
     const items = ensureArray(resp);
-    return items.map(prof => ({
+    const result = items.map(prof => ({
       profissionalId: prof.id,
       profissionalNome: prof.nome,
       horariosDisponiveis: prof.horariosVagos ?? [],
       data,
     }));
+    toCache(cacheKey, result);
+    return result;
   } catch (err) {
     console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
@@ -375,9 +382,8 @@ async function cancelarAgendamento(agendamentoId) {
   }
 
   const client = getClient();
-  await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {
-    motivoCancelamento: 'Cliente desmarcou via WhatsApp',
-  });
+  // Sem body — o endpoint só precisa do ID na URL
+  await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`);
 }
 
 // ─── Contexto completo para o OpenAI ──────────────────────────────────────────
@@ -409,9 +415,9 @@ async function buildContext(phone, requestedDate = null) {
     };
   }
 
-  // Busca disponibilidade dos próximos 7 dias em paralelo
+  // Busca disponibilidade: hoje + amanhã + data solicitada (sequencial para não exceder rate limit)
   const dates = new Set();
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 2; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     dates.add(d.toISOString().split('T')[0]);
@@ -419,10 +425,9 @@ async function buildContext(phone, requestedDate = null) {
   if (requestedDate) dates.add(requestedDate);
 
   const disponibilidadeMap = {};
-  await Promise.all([...dates].map(async (d) => {
-    const slots = await listarDisponibilidade(d);
-    disponibilidadeMap[d] = slots;
-  }));
+  for (const d of dates) {
+    disponibilidadeMap[d] = await listarDisponibilidade(d);
+  }
 
   return {
     isCustomer: !!cliente,
