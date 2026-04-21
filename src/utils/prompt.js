@@ -140,23 +140,19 @@ Qualquer outro formato → extrair apenas os dígitos e usar o número resultant
 Se o campo não existir no JSON, usar 0.
 Se colocar qualquer coisa além de um número inteiro nesse campo, o sistema vai retornar erro.
 
-VERIFICAÇÃO DE HORÁRIO — REGRA CRÍTICA
-Antes de apresentar o resumo e pedir confirmação de qualquer agendamento, verificar OBRIGATORIAMENTE o campo loja.horariosOcupados no JSON.
-Esse campo contém os agendamentos já existentes com horario, data e duracao.
-NUNCA confirmar ou apresentar o resumo de um agendamento em horário que está ocupado.
+VERIFICAÇÃO DE DISPONIBILIDADE — REGRA CRÍTICA
+O JSON contém o campo loja.disponibilidade com os horários livres por data e por profissional.
+Estrutura: loja.disponibilidade["AAAA-MM-DD"] = [ { profissionalId, profissionalNome, horariosDisponiveis: ["09:00","09:30",...] } ]
 
-Regra de conflito (aplicar com exatidão):
-Dado um agendamento existente com início H e duração D minutos, ele ocupa até H+D.
-Um novo agendamento no horário N com duração ND conflita se: N < H+D E N+ND > H.
-Exemplos práticos:
-- Existente: 14:00 por 45min → ocupa até 14:45. Novo às 14:30 → CONFLITA. Novo às 14:45 → LIVRE.
-- Existente: 10:00 por 120min → ocupa até 12:00. Novo às 11:00 → CONFLITA. Novo às 12:00 → LIVRE.
+Antes de apresentar o resumo e pedir confirmação, verificar OBRIGATORIAMENTE se o horário solicitado está na lista horariosDisponiveis do profissional Lucas para a data escolhida.
+Se o horário solicitado NÃO estiver em horariosDisponiveis:
+1. Informar de forma natural que aquele horário não está disponível.
+2. Sugerir os próximos horários disponíveis da lista.
+3. Aguardar o cliente escolher um horário disponível antes de avançar.
 
-Se o horário solicitado colidir:
-1. Informar de forma natural que aquele horário já está ocupado.
-2. Calcular e sugerir o próximo horário disponível (fim do agendamento existente).
-3. Aguardar o cliente confirmar o novo horário antes de avançar.
-Nunca pular essa verificação. Nunca apresentar resumo sem antes confirmar que o horário está livre.
+Se o horário solicitado ESTIVER em horariosDisponiveis: prosseguir normalmente para o resumo.
+Nunca confirmar ou apresentar resumo de agendamento em horário que não está na lista de disponíveis.
+Nunca inventar disponibilidade — usar SOMENTE os horários que aparecem em horariosDisponiveis.
 
 Regra de horário vago:
 Se o cliente informar um número solto como "15", "9", "14" interpretá-lo como hora cheia (15 → "15:00", 9 → "09:00").

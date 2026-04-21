@@ -301,11 +301,15 @@ async function listarAgendamentosCliente(clienteId) {
   }
 }
 
-async function listarHorariosOcupados(data) {
+async function listarDisponibilidade(data) {
+  // A API retorna horariosVagos (livres) por profissional — usamos isso diretamente
   if (isDemoMode()) {
-    return demoAgendamentos
-      .filter(a => a.data === data)
-      .map(a => ({ profissionalId: a.profissionalId, horario: a.horario, duracao: a.duracao, data }));
+    return [{
+      profissionalId: 1,
+      profissionalNome: 'Lucas Rocha',
+      horariosDisponiveis: ['09:00','09:30','10:00','10:30','11:00','14:00','14:30','15:00','15:30','16:00'],
+      data,
+    }];
   }
 
   const client = getClient();
@@ -314,27 +318,15 @@ async function listarHorariosOcupados(data) {
       params: { pageSize: 100 },
     });
 
-    console.log(`[Trinks] horariosOcupados raw (${data}):`, JSON.stringify(resp).slice(0, 500));
-
     const items = ensureArray(resp);
-    const ocupados = [];
-
-    for (const profissional of items) {
-      const agendamentos = profissional.agendamentos ?? [];
-      for (const ag of agendamentos) {
-        ocupados.push({
-          profissionalId: profissional.profissionalId ?? profissional.id,
-          horario: ag.dataHoraInicio ? ag.dataHoraInicio.split('T')[1]?.substring(0, 5) : '',
-          duracao: ag.duracaoEmMinutos ?? 0,
-          data,
-        });
-      }
-    }
-
-    console.log(`[Trinks] horariosOcupados processados (${data}):`, JSON.stringify(ocupados));
-    return ocupados;
+    return items.map(prof => ({
+      profissionalId: prof.id,
+      profissionalNome: prof.nome,
+      horariosDisponiveis: prof.horariosVagos ?? [],
+      data,
+    }));
   } catch (err) {
-    console.error(`[Trinks] Erro ao buscar horários ocupados (${data}):`, err.response?.data ?? err.message);
+    console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
   }
 }
@@ -378,14 +370,13 @@ async function cancelarAgendamento(agendamentoId) {
   if (isDemoMode()) {
     const idx = demoAgendamentos.findIndex(a => a.id === agendamentoId);
     if (idx !== -1) demoAgendamentos.splice(idx, 1);
-    console.log(`[Demo] Agendamento ${agendamentoId} marcado como faltou`);
+    console.log(`[Demo] Agendamento ${agendamentoId} cancelado`);
     return;
   }
 
   const client = getClient();
-  // Marca como "Faltou" em vez de cancelar, com observação de que o cliente desmarcou
-  await client.patch(`/v1/agendamentos/${agendamentoId}/status/faltou`, {
-    observacoes: 'Cliente desmarcou via WhatsApp',
+  await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {
+    motivoCancelamento: 'Cliente desmarcou via WhatsApp',
   });
 }
 
@@ -418,7 +409,7 @@ async function buildContext(phone, requestedDate = null) {
     };
   }
 
-  // Busca horários ocupados dos próximos 7 dias — cobre "amanhã", "quarta", "semana que vem"
+  // Busca disponibilidade dos próximos 7 dias em paralelo
   const dates = new Set();
   for (let i = 0; i < 7; i++) {
     const d = new Date();
@@ -427,10 +418,10 @@ async function buildContext(phone, requestedDate = null) {
   }
   if (requestedDate) dates.add(requestedDate);
 
-  const horariosOcupados = [];
+  const disponibilidadeMap = {};
   await Promise.all([...dates].map(async (d) => {
-    const slots = await listarHorariosOcupados(d);
-    horariosOcupados.push(...slots);
+    const slots = await listarDisponibilidade(d);
+    disponibilidadeMap[d] = slots;
   }));
 
   return {
@@ -440,7 +431,7 @@ async function buildContext(phone, requestedDate = null) {
     profissionais,
     loja: {
       estabelecimentoId: db.getConfig('trinks_estabelecimento_id'),
-      horariosOcupados,
+      disponibilidade: disponibilidadeMap,
     },
   };
 }
@@ -451,7 +442,7 @@ module.exports = {
   buscarClientePorTelefone,
   criarCliente,
   listarAgendamentosCliente,
-  listarHorariosOcupados,
+  listarDisponibilidade,
   criarAgendamento,
   cancelarAgendamento,
   buildContext,
