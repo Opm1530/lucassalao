@@ -259,9 +259,10 @@ async function processMessage(phone, text, isLatest = () => true) {
       if (agendamentoOk) {
         mensagens.push(`Seu horário com o Lucas está confirmado para ${item.data} às ${item.horario}. ✅`);
 
-        // Link para outros serviços do salão (número configurável no dashboard)
+        // Link para outros serviços — só envia se for o primeiro agendamento da conversa
         const outroNumero = db.getConfig('whatsapp_outros_servicos');
-        if (outroNumero) {
+        const jaEnviouLink = conv.history.some(m => m.role === 'assistant' && m.content?.includes('wa.me'));
+        if (outroNumero && !jaEnviouLink) {
           const numeroLimpo = outroNumero.replace(/\D/g, '');
           mensagens.push(`Se quiser aproveitar e marcar outro serviço no mesmo horário com outro profissional do salão, é só entrar em contato por aqui 👇\nhttps://wa.me/${numeroLimpo}`);
         }
@@ -272,12 +273,19 @@ async function processMessage(phone, text, isLatest = () => true) {
         mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');
       }
     }
-  } else if (acao === 'cancelar_agendamento' && agendamento_cancelar?.id) {
-    try {
-      await trinksService.cancelarAgendamento(agendamento_cancelar.id);
-      console.log(`[Bot] Agendamento ${agendamento_cancelar.id} cancelado`);
-    } catch (err) {
-      console.error('[Bot] Erro ao cancelar:', err.message);
+  } else if (acao === 'cancelar_agendamento') {
+    // Suporta cancelar um ou múltiplos: agendamento_cancelar pode ser objeto {id} ou array [{id},{id}]
+    const ids = Array.isArray(agendamento_cancelar)
+      ? agendamento_cancelar.map(a => a.id).filter(Boolean)
+      : agendamento_cancelar?.id ? [agendamento_cancelar.id] : [];
+
+    for (const id of ids) {
+      try {
+        await trinksService.cancelarAgendamento(id);
+        console.log(`[Bot] Agendamento ${id} marcado como faltou`);
+      } catch (err) {
+        console.error(`[Bot] Erro ao cancelar agendamento ${id}:`, err.message);
+      }
     }
     await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
   } else if (acao !== 'criar_cliente') {

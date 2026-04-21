@@ -414,16 +414,20 @@ async function buildContext(phone, requestedDate = null) {
     };
   }
 
-  // Fetch occupied slots for today and requested date
-  const today = new Date().toISOString().split('T')[0];
-  const dates = new Set([today]);
+  // Busca horários ocupados dos próximos 7 dias — cobre "amanhã", "quarta", "semana que vem"
+  const dates = new Set();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    dates.add(d.toISOString().split('T')[0]);
+  }
   if (requestedDate) dates.add(requestedDate);
 
   const horariosOcupados = [];
-  for (const d of dates) {
+  await Promise.all([...dates].map(async (d) => {
     const slots = await listarHorariosOcupados(d);
     horariosOcupados.push(...slots);
-  }
+  }));
 
   return {
     isCustomer: !!cliente,
