@@ -35,6 +35,7 @@ router.post('/config', (req, res) => {
     'evolution_instance',
     'bot_active',
     'max_history',
+    'whatsapp_outros_servicos',
   ];
 
   const toSave = {};

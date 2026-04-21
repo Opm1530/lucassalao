@@ -374,13 +374,14 @@ async function cancelarAgendamento(agendamentoId) {
   if (isDemoMode()) {
     const idx = demoAgendamentos.findIndex(a => a.id === agendamentoId);
     if (idx !== -1) demoAgendamentos.splice(idx, 1);
-    console.log(`[Demo] Agendamento ${agendamentoId} cancelado`);
+    console.log(`[Demo] Agendamento ${agendamentoId} marcado como faltou`);
     return;
   }
 
   const client = getClient();
-  await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {
-    motivoCancelamento: 'Cancelado pelo cliente via WhatsApp',
+  // Marca como "Faltou" em vez de cancelar, com observação de que o cliente desmarcou
+  await client.patch(`/v1/agendamentos/${agendamentoId}/status/faltou`, {
+    observacoes: 'Cliente desmarcou via WhatsApp',
   });
 }
 

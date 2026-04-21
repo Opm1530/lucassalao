@@ -14,7 +14,7 @@ setInterval(() => processedMessages.clear(), 60 * 60 * 1000);
 // Aguarda BUFFER_DELAY ms após a ÚLTIMA mensagem antes de processar.
 // Se o cliente mandar "Oi" + "quero agendar" + "um corte" em sequência,
 // cada nova mensagem reinicia o timer — tudo chega junto.
-const BUFFER_DELAY = 13000; // 13 segundos
+const BUFFER_DELAY = 8000; // 8 segundos
 
 const messageBuffers = new Map();
 
@@ -258,6 +258,14 @@ async function processMessage(phone, text, isLatest = () => true) {
       mensagens.length = 0;
       if (agendamentoOk) {
         mensagens.push(`Seu horário com o Lucas está confirmado para ${item.data} às ${item.horario}. ✅`);
+
+        // Link para outros serviços do salão (número configurável no dashboard)
+        const outroNumero = db.getConfig('whatsapp_outros_servicos');
+        if (outroNumero) {
+          const numeroLimpo = outroNumero.replace(/\D/g, '');
+          mensagens.push(`Se quiser aproveitar e marcar outro serviço no mesmo horário com outro profissional do salão, é só entrar em contato por aqui 👇\nhttps://wa.me/${numeroLimpo}`);
+        }
+
         mensagens.push('Se precisar de mais alguma coisa, é só avisar!');
       } else {
         mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
