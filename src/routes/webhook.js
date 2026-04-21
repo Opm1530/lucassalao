@@ -176,6 +176,7 @@ async function processMessage(phone, text, isLatest = () => true) {
   conv.history.push({ role: 'assistant', content: JSON.stringify(aiResponse) });
 
   const { acao, mensagens = [], novoStage, agendamento, agendamento_cancelar, cliente, encaminharHumano } = aiResponse;
+  console.log(`[Bot] acao=${acao} | agendamento_cancelar=${JSON.stringify(agendamento_cancelar)} | agendamento=${JSON.stringify(agendamento)?.slice(0,200)}`);
 
   // ── Ações Trinks ──────────────────────────────────────────────────────────
   if (acao === 'criar_cliente') {

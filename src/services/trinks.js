@@ -314,6 +314,8 @@ async function listarHorariosOcupados(data) {
       params: { pageSize: 100 },
     });
 
+    console.log(`[Trinks] horariosOcupados raw (${data}):`, JSON.stringify(resp).slice(0, 500));
+
     const items = ensureArray(resp);
     const ocupados = [];
 
@@ -329,8 +331,10 @@ async function listarHorariosOcupados(data) {
       }
     }
 
+    console.log(`[Trinks] horariosOcupados processados (${data}):`, JSON.stringify(ocupados));
     return ocupados;
-  } catch {
+  } catch (err) {
+    console.error(`[Trinks] Erro ao buscar horários ocupados (${data}):`, err.response?.data ?? err.message);
     return [];
   }
 }
