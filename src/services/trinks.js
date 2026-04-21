@@ -384,8 +384,10 @@ async function cancelarAgendamento(agendamentoId) {
 
   const client = getClient();
   try {
-    // Alguns endpoints REST exigem body vazio explícito com Content-Type JSON
-    await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {});
+    await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {
+      Motivo: 'Cancelado pelo cliente via WhatsApp',
+      QuemCancelou: 1, // 1 = cliente
+    });
     console.log(`[Trinks] Agendamento ${agendamentoId} cancelado com sucesso`);
   } catch (err) {
     const status = err.response?.status;
