@@ -52,6 +52,7 @@ function getClient() {
       'X-Api-Key': apiKey,
       'EstabelecimentoId': estabelecimentoId,
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
     },
     timeout: 15000,
   });
@@ -382,8 +383,16 @@ async function cancelarAgendamento(agendamentoId) {
   }
 
   const client = getClient();
-  // Sem body — o endpoint só precisa do ID na URL
-  await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`);
+  try {
+    // Alguns endpoints REST exigem body vazio explícito com Content-Type JSON
+    await client.patch(`/v1/agendamentos/${agendamentoId}/status/cancelado`, {});
+    console.log(`[Trinks] Agendamento ${agendamentoId} cancelado com sucesso`);
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[Trinks] Falha ao cancelar agendamento ${agendamentoId} — HTTP ${status}:`, detail);
+    throw new Error(`Cancelamento falhou (${status}): ${detail}`);
+  }
 }
 
 // ─── Contexto completo para o OpenAI ──────────────────────────────────────────
