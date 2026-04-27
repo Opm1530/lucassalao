@@ -209,7 +209,7 @@ async function buscarClientePorEmail(email) {
   }
 }
 
-async function criarCliente({ nome, email, whatsapp, dataNascimento }) {
+async function criarCliente({ nome, cpf, email, whatsapp, dataNascimento }) {
   const numero = (whatsapp || '').replace('@s.whatsapp.net', '').replace(/^55/, '');
 
   if (isDemoMode()) {
@@ -234,6 +234,10 @@ async function criarCliente({ nome, email, whatsapp, dataNascimento }) {
         Numero: numeroCompleto.substring(2),
         TipoId: 3 // Celular
       });
+    }
+
+    if (cpf) {
+      payload.Cpf = cpf.replace(/\D/g, ''); // somente dígitos
     }
 
     if (email && email.includes('@')) {
@@ -359,7 +363,7 @@ async function criarAgendamento({ clienteId, servicoId, profissionalId, dataHora
       DataHoraInicio: dataHora,
       DuracaoEmMinutos: duracao ? Number(duracao) : 0,
       Valor: valor ? Number(valor) : 0,
-      Confirmado: true,
+      Confirmado: false, // aguardando confirmação do salão — cliente vê como criado normalmente
       Observacoes: observacoes || null,
     };
 

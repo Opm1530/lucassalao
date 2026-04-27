@@ -163,10 +163,10 @@ async function processMessage(phone, text, isLatest = () => true) {
 
   if (conv.client_data) {
     context.isCustomer = true;
-    context.lead.clienteNome  = conv.client_data.nome;
+    context.lead.clienteNome     = conv.client_data.nome;
     context.lead.clienteWhatsApp = conv.client_data.whatsapp;
-    context.lead.clienteEmail = conv.client_data.email;
-    context.lead.clienteId   = conv.client_data.clienteId;
+    context.lead.clienteEmail    = conv.client_data.email;
+    context.lead.clienteId       = conv.client_data.clienteId;
   }
 
   // OpenAI
@@ -190,6 +190,7 @@ async function processMessage(phone, text, isLatest = () => true) {
     try {
       const result = await trinksService.criarCliente({
         nome: cliente?.nome,
+        cpf: cliente?.cpf,
         email: cliente?.email,
         whatsapp: cliente?.whatsapp || phone,
         dataNascimento: cliente?.data_nascimento,
@@ -197,6 +198,7 @@ async function processMessage(phone, text, isLatest = () => true) {
       await db.saveConversation(phone, conv.history, novoStage || conv.stage, {
         clienteId: result.id,
         nome: cliente?.nome,
+        cpf: cliente?.cpf || null,
         whatsapp: cliente?.whatsapp || phone.replace('@s.whatsapp.net', ''),
         email: cliente?.email || null,
         dataNascimento: cliente?.data_nascimento || null,
@@ -206,76 +208,92 @@ async function processMessage(phone, text, isLatest = () => true) {
       console.error('[Bot] Erro ao criar cliente na Trinks:', err.message);
     }
   } else if (acao === 'gerar_agendamento' && agendamento?.length > 0) {
-    const item = agendamento[0];
-
-    // Normalizar data — aceita DD/MM/AAAA ou DD/MM (completa com ano corrente)
-    // Rejeita apenas texto livre sem nenhum número de data
-    let dataNormalizada = item.data || '';
-    if (/^\d{1,2}\/\d{1,2}$/.test(dataNormalizada.trim())) {
-      dataNormalizada = dataNormalizada.trim() + '/' + new Date().getFullYear();
+    // ── Normalizar datas de todos os itens ───────────────────────────────────
+    for (const item of agendamento) {
+      let dataNormalizada = item.data || '';
+      if (/^\d{1,2}\/\d{1,2}$/.test(dataNormalizada.trim())) {
+        dataNormalizada = dataNormalizada.trim() + '/' + new Date().getFullYear();
+      }
+      const parteData = dataNormalizada.split('/');
+      if (parteData.length === 3) {
+        dataNormalizada = parteData[0].padStart(2,'0') + '/' + parteData[1].padStart(2,'0') + '/' + parteData[2];
+      }
+      item.data = dataNormalizada;
     }
-    // Normalizar partes para garantir dois dígitos
-    const parteData = dataNormalizada.split('/');
-    if (parteData.length === 3) {
-      dataNormalizada = parteData[0].padStart(2,'0') + '/' + parteData[1].padStart(2,'0') + '/' + parteData[2];
-    }
-    item.data = dataNormalizada;
 
-    const dataValida = /^\d{2}\/\d{2}\/\d{4}$/.test(item.data);
-    if (!dataValida) {
-      console.error(`[Bot] Data inválida recebida da IA: "${item.data}" — abortando agendamento`);
+    const dataInvalida = agendamento.find(item => !/^\d{2}\/\d{2}\/\d{4}$/.test(item.data));
+    if (dataInvalida) {
+      console.error(`[Bot] Data inválida: "${dataInvalida.data}" — abortando agendamento`);
       await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
       mensagens.length = 0;
       mensagens.push('Para confirmar o horário, preciso da data exata. Pode me informar o dia e mês? 📅');
     } else {
-      let agendamentoOk = false;
-      let erroMsg = null;
+      // ── Resolver clienteId ────────────────────────────────────────────────
+      let clienteId = context.lead.clienteId || conv.client_data?.clienteId;
+      if (!clienteId) {
+        const found = await trinksService.buscarClientePorTelefone(phone);
+        clienteId = found?.id;
+      }
 
-      try {
-        let clienteId = context.lead.clienteId || conv.client_data?.clienteId;
+      // ── Criar todos os agendamentos em sequência ──────────────────────────
+      const resultados = [];
+      for (const item of agendamento) {
         if (!clienteId) {
-          const found = await trinksService.buscarClientePorTelefone(phone);
-          clienteId = found?.id;
+          resultados.push({ item, ok: false, erro: 'Cadastro não encontrado.' });
+          continue;
         }
-        if (!clienteId) throw new Error('Cadastro não encontrado no sistema.');
-
         let profissionalId = item.profissionalId || null;
         if (!profissionalId && context.profissionais.length === 1) {
           profissionalId = context.profissionais[0].profissionalId;
         }
-
-        const result = await trinksService.criarAgendamento({
-          clienteId,
-          servicoId: item.id,
-          profissionalId,
-          dataHora: buildISODate(item.data, item.horario),
-          duracao: typeof item.duracao === 'number' ? item.duracao : parseInt(item.duracao, 10),
-          valor: item.preco,
-          observacoes: cliente?.observacao || null,
-        });
-        console.log(`[Bot] Agendamento criado: id=${result.id}`);
-        agendamentoOk = true;
-      } catch (err) {
-        console.error('[Bot] Erro ao criar agendamento:', err.message);
-        erroMsg = err.message;
+        try {
+          const result = await trinksService.criarAgendamento({
+            clienteId,
+            servicoId: item.id,
+            profissionalId,
+            dataHora: buildISODate(item.data, item.horario),
+            duracao: typeof item.duracao === 'number' ? item.duracao : parseInt(item.duracao, 10),
+            valor: item.preco,
+            observacoes: cliente?.observacao || null,
+          });
+          console.log(`[Bot] Agendamento criado: id=${result.id} | ${item.servico} ${item.data} ${item.horario}`);
+          resultados.push({ item, ok: true });
+        } catch (err) {
+          console.error(`[Bot] Erro ao criar agendamento (${item.servico}):`, err.message);
+          resultados.push({ item, ok: false, erro: err.message });
+        }
       }
 
       await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
 
-      // Substituir mensagens da IA pelo resultado real — nunca deixar a IA confirmar algo que pode ter falhado
-      mensagens.length = 0;
-      if (agendamentoOk) {
-        mensagens.push(`Seu horário com o Lucas está confirmado para ${item.data} às ${item.horario}. ✅`);
+      const sucessos = resultados.filter(r => r.ok);
+      const falhas   = resultados.filter(r => !r.ok);
 
-        // Link para outros serviços — só envia se for o primeiro agendamento da conversa
+      mensagens.length = 0;
+      if (sucessos.length > 0) {
+        if (sucessos.length === 1) {
+          const { item } = sucessos[0];
+          mensagens.push(`Seu horário com o Lucas está confirmado para ${item.data} às ${item.horario}. ✅`);
+        } else {
+          mensagens.push('Seus horários com o Lucas estão confirmados! ✅');
+          for (const { item } of sucessos) {
+            mensagens.push(`${item.servico}: ${item.data} às ${item.horario}`);
+          }
+        }
+
+        // Link para outros serviços — só envia uma vez por conversa
         const outroNumero = db.getConfig('whatsapp_outros_servicos');
         const jaEnviouLink = conv.history.some(m => m.role === 'assistant' && m.content?.includes('wa.me'));
         if (outroNumero && !jaEnviouLink) {
           const numeroLimpo = outroNumero.replace(/\D/g, '');
-          mensagens.push(`Se quiser aproveitar e marcar outro serviço no mesmo horário com outro profissional do salão, é só entrar em contato por aqui 👇\nhttps://wa.me/${numeroLimpo}`);
+          mensagens.push(`Se quiser marcar outro serviço com um profissional diferente do salão, é só falar por aqui 👇\nhttps://wa.me/${numeroLimpo}`);
         }
 
-        mensagens.push('Se precisar de mais alguma coisa, é só avisar!');
+        if (falhas.length > 0) {
+          mensagens.push('Porém, tive um problema com um dos serviços. Entre em contato com o salão para resolver. 😔');
+        } else {
+          mensagens.push('Se precisar de mais alguma coisa, é só avisar!');
+        }
       } else {
         mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
         mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');
