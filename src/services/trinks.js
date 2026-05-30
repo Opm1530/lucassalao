@@ -131,6 +131,7 @@ async function listarServicos() {
   const servicos = allItems.map((s) => ({
     serviceId: s.id,
     serviceName: s.nome,
+    serviceDescription: s.descricao ?? s.observacao ?? '',
     servicePrice: s.valor ?? s.preco ?? 0,
     serviceDuracao: s.duracaoEmMinutos ? `${s.duracaoEmMinutos} minutos` : '60 minutos',
     duracaoMinutos: s.duracaoEmMinutos ?? 60,
