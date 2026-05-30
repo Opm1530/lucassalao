@@ -109,12 +109,26 @@ async function listarServicos() {
   if (cached) return cached;
 
   const client = getClient();
-  const { data } = await client.get('/v1/servicos', {
-    params: { pageSize: 100, somenteVisiveisCliente: false },
-  });
+  let allItems = [];
+  let page = 1;
+  const pageSize = 100;
 
-  const items = ensureArray(data);
-  const servicos = items.map((s) => ({
+  while (true) {
+    const { data } = await client.get('/v1/servicos', {
+      params: { pageSize, page, somenteVisiveisCliente: false },
+    });
+
+    console.log(`[Trinks] Serviços página ${page}: totalPages=${data.totalPages ?? data.TotalPages ?? '?'} totalItems=${data.totalCount ?? data.TotalCount ?? '?'}`);
+
+    const items = ensureArray(data);
+    allItems = allItems.concat(items);
+
+    const totalPages = data.totalPages ?? data.TotalPages ?? 1;
+    if (page >= totalPages || items.length === 0) break;
+    page++;
+  }
+
+  const servicos = allItems.map((s) => ({
     serviceId: s.id,
     serviceName: s.nome,
     servicePrice: s.valor ?? s.preco ?? 0,
@@ -124,6 +138,7 @@ async function listarServicos() {
     categoria: s.categoria?.nome ?? '',
   }));
 
+  console.log(`[Trinks] Total de serviços carregados: ${servicos.length}`);
   toCache('servicos', servicos);
   return servicos;
 }
