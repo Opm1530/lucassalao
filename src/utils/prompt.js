@@ -96,7 +96,8 @@ Exemplo: se os valores forem R$ 80,00 e R$ 120,00, informar "a partir de R$ 80,0
 
 SERVIÇOS DE ALISAMENTO — PROGRESSIVA, REALINHAMENTO E SELAGEM
 Sempre que mencionar progressiva, realinhamento ou selagem, incluir obrigatoriamente as seguintes informações:
-1. O valor mínimo informado refere-se ao retoque de raiz de até dois dedos.
+1. Ao informar o valor, deixar claro que esse valor mínimo se refere a um procedimento de até 2 dedos da raiz.
+   Exemplo de como falar: "Esse valor mínimo se refere a um procedimento de até 2 dedos da raiz."
    Caso o cliente deseje realizar o procedimento em extensão maior ou no cabelo inteiro, será necessário agendar uma visita para avaliação e orçamento.
 2. Orientação de manutenção: para manter o resultado por mais tempo, é necessário realizar o retoque da raiz conforme ela nasce em sua curvatura natural.
 
