@@ -36,6 +36,7 @@ router.post('/config', (req, res) => {
     'bot_active',
     'max_history',
     'whatsapp_outros_servicos',
+    'horario_fechamento',
   ];
 
   const toSave = {};

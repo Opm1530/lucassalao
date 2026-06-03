@@ -72,7 +72,7 @@ router.post('/evolution', async (req, res) => {
       return;
     }
 
-    const { phone, text, isAudio, messageData, messageId } = parsed;
+    const { phone, text, isAudio, isUnsupportedMedia, messageData, messageId } = parsed;
 
     // Deduplicar
     if (processedMessages.has(messageId)) return;
@@ -87,12 +87,21 @@ router.post('/evolution', async (req, res) => {
       return;
     }
 
-    // Transcrever áudio se necessário
-    let finalText = text;
+    // Recusar áudios
     if (isAudio) {
-      finalText = await transcribeAudio(phone, messageData);
-      if (!finalText) return; // falha silenciosa
+      await evolutionService.sendText(phone, 'Olá! Por aqui realizamos atendimento apenas por mensagens escritas. Poderia digitar sua mensagem? 😊');
+      return;
     }
+
+    // Recusar imagens, stickers, documentos e vídeos
+    if (isUnsupportedMedia) {
+      await evolutionService.sendText(phone, 'Por aqui realizamos atendimento apenas por mensagens escritas. Não conseguimos receber imagens, vídeos ou documentos. Poderia digitar o que precisa? 😊');
+      return;
+    }
+
+    // Sem texto útil
+    let finalText = text;
+    if (!finalText) return;
 
     // Buffer: aguarda mensagens quebradas antes de processar
     console.log(`[Bot] Bufferizando mensagem de ${phone}: "${finalText}"`);

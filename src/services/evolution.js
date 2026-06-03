@@ -159,6 +159,15 @@ function parseIncomingMessage(payload) {
   // Detect audio
   const isAudio = !!(message.audioMessage || message.pttMessage);
 
+  // Detect unsupported media types (image, video, sticker, document)
+  const isUnsupportedMedia = !!(
+    message.imageMessage ||
+    message.videoMessage ||
+    message.stickerMessage ||
+    message.documentMessage ||
+    message.documentWithCaptionMessage
+  );
+
   // Extract text from various message types
   const text =
     message.conversation ??
@@ -167,14 +176,15 @@ function parseIncomingMessage(payload) {
     message.editedMessage?.message?.protocolMessage?.editedMessage?.extendedTextMessage?.text ??
     null;
 
-  // Accept only text or audio — ignore images, stickers, docs, etc.
-  if (!text && !isAudio) return null;
+  // Ignore if nothing recognizable
+  if (!text && !isAudio && !isUnsupportedMedia) return null;
 
   return {
     phone: remoteJid,
     text: text ? text.trim() : null,
     isAudio,
-    messageData: isAudio ? data : null, // full data needed for download
+    isUnsupportedMedia,
+    messageData: isAudio ? data : null,
     pushName: data?.pushName ?? '',
     messageId: data?.key?.id ?? '',
     instance: payload.instance ?? '',

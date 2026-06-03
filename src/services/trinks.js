@@ -477,6 +477,11 @@ async function buildContext(phone, requestedDate = null) {
     }
   }
 
+  // Horário de fechamento configurável (padrão 18:00)
+  const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
+  const [fechHH, fechMM] = horarioFechamento.split(':').map(Number);
+  const fechamentoEmMinutos = fechHH * 60 + fechMM;
+
   return {
     isCustomer: !!cliente,
     lead,
@@ -484,9 +489,24 @@ async function buildContext(phone, requestedDate = null) {
     profissionais,
     loja: {
       estabelecimentoId: db.getConfig('trinks_estabelecimento_id'),
+      horarioFechamento,
       disponibilidade: disponibilidadeMap,
     },
+    _meta: { fechamentoEmMinutos },
   };
+}
+
+/**
+ * Dado um array de slots de horário ("HH:MM") e a duração total necessária em minutos,
+ * retorna apenas os slots onde o serviço termina até o horário de fechamento.
+ */
+function filtrarSlotsPorDuracao(slots, duracaoTotalMinutos, horarioFechamento = '18:00') {
+  const [fhh, fmm] = horarioFechamento.split(':').map(Number);
+  const fechamento = fhh * 60 + fmm;
+  return slots.filter(h => {
+    const [hh, mm] = h.split(':').map(Number);
+    return (hh * 60 + mm + duracaoTotalMinutos) <= fechamento;
+  });
 }
 
 module.exports = {
@@ -496,6 +516,7 @@ module.exports = {
   criarCliente,
   listarAgendamentosCliente,
   listarDisponibilidade,
+  filtrarSlotsPorDuracao,
   criarAgendamento,
   cancelarAgendamento,
   buildContext,
