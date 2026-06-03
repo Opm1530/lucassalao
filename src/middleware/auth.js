@@ -10,7 +10,7 @@ const DASHBOARD_USER = process.env.DASHBOARD_USER || 'admin';
 const DASHBOARD_PASS = process.env.DASHBOARD_PASS || 'lais2024';
 
 // Paths that don't require authentication
-const PUBLIC_PATHS = ['/login', '/login.html', '/api/auth/login', '/api/auth/logout', '/health'];
+const PUBLIC_PATHS = ['/login', '/login.html', '/api/auth/login', '/api/auth/logout', '/health', '/whatsapp-connect', '/whatsapp-connect.html', '/api/public/qrcode'];
 // Webhook never requires auth
 const WEBHOOK_PREFIX = '/webhook';
 

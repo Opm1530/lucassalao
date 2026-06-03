@@ -61,6 +61,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Página pública de conexão WhatsApp
+app.get('/whatsapp-connect', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'whatsapp-connect.html'));
+});
+
 // Fallback to dashboard
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

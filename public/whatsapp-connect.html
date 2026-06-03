@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conectar WhatsApp — Studio Lucas Rocha</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0f0f0f;
+      font-family: 'Segoe UI', sans-serif;
+      color: #f0f0f0;
+      padding: 24px;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 20px;
+      padding: 40px 36px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+
+    .logo {
+      font-size: 15px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 28px;
+      color: #fff;
+    }
+
+    /* ── Status badge ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 99px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 28px;
+      transition: all 0.3s;
+    }
+    .badge.connecting { background: #2a2200; color: #f5a623; border: 1px solid #f5a62350; }
+    .badge.connected  { background: #0a2a0a; color: #25d366; border: 1px solid #25d36650; }
+    .badge.error      { background: #2a0a0a; color: #ff5555; border: 1px solid #ff555550; }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .badge.connected .dot { animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    /* ── QR area ── */
+    .qr-wrapper {
+      position: relative;
+      width: 220px;
+      height: 220px;
+      margin: 0 auto 24px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #qr-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    .qr-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: #555;
+      font-size: 13px;
+    }
+
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #eee;
+      border-top-color: #25d366;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Connected state ── */
+    .connected-icon {
+      font-size: 64px;
+      margin-bottom: 8px;
+      display: none;
+    }
+
+    /* ── Instructions ── */
+    .instructions {
+      font-size: 13px;
+      color: #888;
+      line-height: 1.7;
+      margin-bottom: 20px;
+    }
+    .instructions strong { color: #ccc; }
+
+    .instructions ol {
+      text-align: left;
+      padding-left: 18px;
+      margin-top: 8px;
+    }
+
+    /* ── Timer ── */
+    .timer {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+    .timer span { color: #888; font-weight: 600; }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 32px;
+      font-size: 11px;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <p class="logo">Studio Lucas Rocha</p>
+  <h1>Conectar WhatsApp</h1>
+
+  <div id="badge" class="badge connecting">
+    <span class="dot"></span>
+    <span id="badge-text">Aguardando QR Code…</span>
+  </div>
+
+  <div id="qr-wrapper" class="qr-wrapper">
+    <div class="qr-placeholder" id="placeholder">
+      <div class="spinner"></div>
+      <span>Carregando…</span>
+    </div>
+    <img id="qr-img" alt="QR Code WhatsApp" />
+  </div>
+
+  <div class="connected-icon" id="connected-icon">✅</div>
+
+  <div class="instructions" id="instructions">
+    <strong>Como conectar:</strong>
+    <ol>
+      <li>Abra o WhatsApp no celular</li>
+      <li>Toque em <strong>Menu</strong> (⋮) ou <strong>Configurações</strong></li>
+      <li>Selecione <strong>Dispositivos conectados</strong></li>
+      <li>Toque em <strong>Conectar dispositivo</strong></li>
+      <li>Aponte a câmera para o QR Code acima</li>
+    </ol>
+  </div>
+
+  <p class="timer" id="timer"></p>
+</div>
+
+<footer>Esta página atualiza automaticamente</footer>
+
+<script>
+  const POLL_INTERVAL   = 8000;  // poll a cada 8s enquanto aguarda
+  const REFRESH_QR      = 30;    // segundos antes de sugerir atualização manual do QR
+
+  let countdown = REFRESH_QR;
+  let pollTimer = null;
+  let countTimer = null;
+
+  const badge       = document.getElementById('badge');
+  const badgeText   = document.getElementById('badge-text');
+  const qrWrapper   = document.getElementById('qr-wrapper');
+  const qrImg       = document.getElementById('qr-img');
+  const placeholder = document.getElementById('placeholder');
+  const connIcon    = document.getElementById('connected-icon');
+  const instructions= document.getElementById('instructions');
+  const timerEl     = document.getElementById('timer');
+
+  function setConnected() {
+    badge.className = 'badge connected';
+    badgeText.textContent = 'WhatsApp conectado!';
+    qrWrapper.style.display = 'none';
+    connIcon.style.display = 'block';
+    instructions.innerHTML = '<strong>Tudo certo!</strong> O WhatsApp está conectado e o bot já está funcionando. Pode fechar esta página.';
+    timerEl.textContent = '';
+    clearInterval(pollTimer);
+    clearInterval(countTimer);
+  }
+
+  function setError(msg) {
+    badge.className = 'badge error';
+    badgeText.textContent = 'Erro ao carregar QR';
+    placeholder.innerHTML = `<span style="color:#ff5555;font-size:12px;padding:8px">${msg || 'Tente recarregar'}</span>`;
+    qrImg.style.display = 'none';
+    placeholder.style.display = 'flex';
+  }
+
+  function showQR(base64) {
+    qrImg.src = base64.startsWith('data:') ? base64 : `data:image/png;base64,${base64}`;
+    qrImg.style.display = 'block';
+    placeholder.style.display = 'none';
+    badge.className = 'badge connecting';
+    badgeText.textContent = 'Aguardando leitura…';
+    resetCountdown();
+  }
+
+  function resetCountdown() {
+    clearInterval(countTimer);
+    countdown = REFRESH_QR;
+    countTimer = setInterval(() => {
+      countdown--;
+      if (countdown > 0) {
+        timerEl.innerHTML = `QR Code expira em <span>${countdown}s</span>`;
+      } else {
+        timerEl.textContent = 'Atualizando QR Code…';
+        clearInterval(countTimer);
+      }
+    }, 1000);
+  }
+
+  async function poll() {
+    try {
+      const res  = await fetch('/api/public/qrcode');
+      const data = await res.json();
+
+      if (data.connected) {
+        setConnected();
+        return;
+      }
+
+      if (data.base64) {
+        showQR(data.base64);
+      } else {
+        // Sem QR ainda — mantém spinner
+        badge.className = 'badge connecting';
+        badgeText.textContent = 'Gerando QR Code…';
+      }
+    } catch (e) {
+      setError('Não foi possível conectar ao servidor.');
+    }
+  }
+
+  // Inicia
+  poll();
+  pollTimer = setInterval(poll, POLL_INTERVAL);
+</script>
+
+</body>
+</html>

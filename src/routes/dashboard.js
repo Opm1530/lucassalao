@@ -49,6 +49,21 @@ router.post('/config', (req, res) => {
   res.json({ success: true });
 });
 
+// ─── Endpoint público — QR Code (sem autenticação) ───────────────────────────
+
+router.get('/public/qrcode', async (req, res) => {
+  try {
+    const state = await evolutionService.getConnectionState();
+    if (state.state === 'open') {
+      return res.json({ connected: true, state: 'open' });
+    }
+    const qr = await evolutionService.getQRCode();
+    res.json({ connected: false, state: state.state, ...qr });
+  } catch (err) {
+    res.status(500).json({ connected: false, state: 'error', error: err.message });
+  }
+});
+
 // ─── Status / WhatsApp ────────────────────────────────────────────────────────
 
 router.get('/status', async (req, res) => {
