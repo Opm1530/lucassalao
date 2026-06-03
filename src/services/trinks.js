@@ -455,9 +455,26 @@ async function buildContext(phone, requestedDate = null) {
   }
   if (requestedDate) dates.add(requestedDate);
 
+  // Data e hora atual no fuso de Brasília
+  const nowBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const todayStr = nowBrasilia.toISOString().split('T')[0];
+  const currentTime = nowBrasilia.getHours() * 60 + nowBrasilia.getMinutes(); // minutos desde meia-noite
+
   const disponibilidadeMap = {};
   for (const d of dates) {
-    disponibilidadeMap[d] = await listarDisponibilidade(d);
+    const slots = await listarDisponibilidade(d);
+    // Para o dia de hoje, remover horários que já passaram
+    if (d === todayStr) {
+      disponibilidadeMap[d] = slots.map(prof => ({
+        ...prof,
+        horariosDisponiveis: prof.horariosDisponiveis.filter(h => {
+          const [hh, mm] = h.split(':').map(Number);
+          return (hh * 60 + mm) > currentTime;
+        }),
+      }));
+    } else {
+      disponibilidadeMap[d] = slots;
+    }
   }
 
   return {

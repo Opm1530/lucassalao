@@ -110,6 +110,7 @@ async function getConversation(phone) {
     stage: row.stage || 'novo',
     client_data: row.client_data || null,
     human_mode: row.human_mode === true,
+    updated_at: row.updated_at || null,
   };
 }
 

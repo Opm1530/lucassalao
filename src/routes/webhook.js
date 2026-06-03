@@ -161,6 +161,14 @@ async function processMessage(phone, text, isLatest = () => true) {
     };
   }
 
+  // Nova sessão = histórico existe mas última interação foi há mais de 4 horas
+  const NEW_SESSION_THRESHOLD_MS = 4 * 60 * 60 * 1000;
+  const lastInteraction = conv.updated_at ? new Date(conv.updated_at) : null;
+  const hasHistory = conv.history.some(m => m.role === 'assistant');
+  context.isNewSession = hasHistory && lastInteraction
+    ? (Date.now() - lastInteraction.getTime()) > NEW_SESSION_THRESHOLD_MS
+    : false;
+
   if (conv.client_data) {
     context.isCustomer = true;
     context.lead.clienteNome     = conv.client_data.nome;
