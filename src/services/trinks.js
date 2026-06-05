@@ -479,8 +479,32 @@ async function buildContext(phone, requestedDate = null) {
 
   // Horário de fechamento configurável (padrão 18:00)
   const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
-  const [fechHH, fechMM] = horarioFechamento.split(':').map(Number);
-  const fechamentoEmMinutos = fechHH * 60 + fechMM;
+
+  // Para cada data e cada serviço, pré-calcular os slots válidos (consecutivos + fechamento)
+  // Isso evita que o modelo liste horários que conflitam com outros agendamentos
+  const disponibilidadeMapFiltrado = {};
+  for (const [data, profSlots] of Object.entries(disponibilidadeMap)) {
+    disponibilidadeMapFiltrado[data] = profSlots.map(prof => {
+      const slotsPorServico = {};
+      for (const servico of servicos) {
+        const dur = servico.duracaoMinutos || 60;
+        slotsPorServico[servico.serviceId] = filtrarSlotsPorDuracao(
+          prof.horariosDisponiveis,
+          dur,
+          horarioFechamento
+        );
+      }
+      return {
+        profissionalId: prof.profissionalId,
+        profissionalNome: prof.profissionalNome,
+        data: prof.data,
+        // slots brutos (todos os blocos vagos — usar apenas para referência interna)
+        horariosDisponiveis: prof.horariosDisponiveis,
+        // slots válidos por serviço: use SEMPRE estes ao apresentar horários ao cliente
+        horariosValidosPorServico: slotsPorServico,
+      };
+    });
+  }
 
   return {
     isCustomer: !!cliente,
@@ -490,22 +514,50 @@ async function buildContext(phone, requestedDate = null) {
     loja: {
       estabelecimentoId: db.getConfig('trinks_estabelecimento_id'),
       horarioFechamento,
-      disponibilidade: disponibilidadeMap,
+      disponibilidade: disponibilidadeMapFiltrado,
     },
-    _meta: { fechamentoEmMinutos },
   };
 }
 
 /**
- * Dado um array de slots de horário ("HH:MM") e a duração total necessária em minutos,
- * retorna apenas os slots onde o serviço termina até o horário de fechamento.
+ * Dado um array de slots vagos ("HH:MM") e a duração necessária em minutos,
+ * retorna apenas os slots de início onde:
+ * 1. Todos os blocos de 30 min dentro da duração também estão livres (sem conflito com outros clientes)
+ * 2. O serviço termina até o horário de fechamento
+ *
+ * Exemplo: progressiva 90 min, slots vagos: [08:00, 08:30, 09:30, 10:00, 10:30]
+ * → 08:00: precisa 08:00 ✅ + 08:30 ✅ + 09:00 ❌ (não está na lista) → inválido
+ * → 09:30: precisa 09:30 ✅ + 10:00 ✅ + 10:30 ✅ → válido
  */
 function filtrarSlotsPorDuracao(slots, duracaoTotalMinutos, horarioFechamento = '18:00') {
   const [fhh, fmm] = horarioFechamento.split(':').map(Number);
   const fechamento = fhh * 60 + fmm;
+
+  // Conjunto de minutos disponíveis para lookup rápido
+  const slotsEmMinutos = new Set(
+    slots.map(h => {
+      const [hh, mm] = h.split(':').map(Number);
+      return hh * 60 + mm;
+    })
+  );
+
+  // Granularidade dos slots do Trinks (30 min)
+  const GRANULARIDADE = 30;
+
   return slots.filter(h => {
     const [hh, mm] = h.split(':').map(Number);
-    return (hh * 60 + mm + duracaoTotalMinutos) <= fechamento;
+    const inicioMin = hh * 60 + mm;
+    const fimMin = inicioMin + duracaoTotalMinutos;
+
+    // 1. Não pode ultrapassar o fechamento
+    if (fimMin > fechamento) return false;
+
+    // 2. Todos os blocos intermediários precisam estar vagos
+    for (let t = inicioMin; t < fimMin; t += GRANULARIDADE) {
+      if (!slotsEmMinutos.has(t)) return false;
+    }
+
+    return true;
   });
 }
 
