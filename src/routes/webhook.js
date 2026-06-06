@@ -152,6 +152,11 @@ async function processMessage(phone, text, isLatest = () => true) {
   conv.history.push({ role: 'user', content: text });
   await db.addLog(phone, 'in', text);
 
+  // Salva a mensagem do cliente ANTES de chamar a OpenAI —
+  // se falhar (ex: 429), o histórico já tem a mensagem registrada
+  // e o botão de Retry no dashboard consegue detectar e reprocessar.
+  await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
+
   // Contexto Trinks
   let context;
   try {
