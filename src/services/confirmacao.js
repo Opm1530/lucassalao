@@ -164,8 +164,10 @@ async function confirmarAutomaticamente(agendamentoId, phone, clienteNome, servi
  * Disparo manual para uma data específica — ignora regras de timing,
  * envia imediatamente para todos os agendamentos ainda não disparados.
  */
-async function dispararConfirmacoes(dataAgendamento) {
-  const agendamentos = await trinksService.listarAgendamentosPorData(dataAgendamento);
+async function dispararConfirmacoes(dataAgendamento, ids = null) {
+  const todos = await trinksService.listarAgendamentosPorData(dataAgendamento);
+  // Se ids fornecidos, filtrar apenas os selecionados
+  const agendamentos = ids ? todos.filter(a => ids.map(String).includes(String(a.id))) : todos;
   const resultados = [];
 
   for (const ag of agendamentos) {

@@ -709,6 +709,35 @@
             <span id="webhookResult" style="margin-left: 12px; font-size: 13px;"></span>
           </div>
         </div>
+        <!-- Confirmações manuais -->
+        <div class="card">
+          <div class="card-title">Confirmações de agendamento</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Selecione a data, carregue os agendamentos e escolha quais clientes notificar.
+          </p>
+          <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+            <div class="form-group" style="margin:0; flex:1; min-width:160px;">
+              <label>Data dos agendamentos</label>
+              <input type="date" id="confirmacaoData" />
+            </div>
+            <button class="btn btn-outline" onclick="carregarAgendamentos()" style="white-space:nowrap;">Carregar clientes</button>
+          </div>
+
+          <div id="confirmacaoLista" style="margin-top:16px; display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span style="font-size:12px; color:var(--text-muted);" id="confirmacaoSubtitle"></span>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-outline btn-sm" onclick="selecionarTodos(true)">Selecionar todos</button>
+                <button class="btn btn-outline btn-sm" onclick="selecionarTodos(false)">Desmarcar todos</button>
+              </div>
+            </div>
+            <div id="confirmacaoItens"></div>
+            <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+              <button class="btn btn-primary" onclick="dispararSelecionados()">Disparar selecionados</button>
+              <span id="confirmacaoResult" style="font-size:13px;"></span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ─── Prompt ─── -->
@@ -873,6 +902,95 @@
     const r = await api('/api/aniversario/toggle', { method: 'POST', body: {} });
     el.checked = r.aniversario_ativo;
   }
+
+  async function carregarAgendamentos() {
+    const dataInput = document.getElementById('confirmacaoData').value;
+    if (!dataInput) { alert('Selecione uma data.'); return; }
+
+    const lista = document.getElementById('confirmacaoLista');
+    const itens = document.getElementById('confirmacaoItens');
+    const subtitle = document.getElementById('confirmacaoSubtitle');
+    itens.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Carregando...</span>';
+    lista.style.display = 'block';
+    document.getElementById('confirmacaoResult').textContent = '';
+
+    const agendamentos = await api('/api/confirmacoes?data=' + dataInput);
+
+    if (!agendamentos.length) {
+      itens.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Nenhum agendamento encontrado para esta data.</span>';
+      subtitle.textContent = '';
+      return;
+    }
+
+    subtitle.textContent = `${agendamentos.length} agendamento(s) encontrado(s)`;
+
+    const statusLabel = { enviado:'Notificada ✓', confirmado:'Confirmada ✓', faltou_automatico:'Faltou', ja_enviado:'Notificada ✓' };
+    const statusColor = { enviado:'var(--text-muted)', confirmado:'var(--accent)', faltou_automatico:'var(--red)' };
+
+    itens.innerHTML = `<table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <thead><tr style="color:var(--text-muted); font-size:11px; text-transform:uppercase;">
+        <th style="padding:6px 4px; text-align:left; width:28px;"></th>
+        <th style="padding:6px 4px; text-align:left;">Cliente</th>
+        <th style="padding:6px 4px; text-align:left;">Horário</th>
+        <th style="padding:6px 4px; text-align:left;">Serviço</th>
+        <th style="padding:6px 4px; text-align:left;">Situação</th>
+      </tr></thead>
+      <tbody>
+        ${agendamentos.map(ag => {
+          const disparoStatus = ag.disparo?.status;
+          const jaNotificado = !!ag.disparo;
+          const semWpp = !ag.clienteWhatsApp;
+          const disabled = semWpp ? 'disabled' : '';
+          const checked = (!jaNotificado && !semWpp) ? 'checked' : '';
+          const situacao = semWpp ? '<span style="color:var(--text-muted)">Sem WhatsApp</span>'
+            : disparoStatus ? `<span style="color:${statusColor[disparoStatus]||'var(--text-muted)'};">${statusLabel[disparoStatus]||disparoStatus}</span>`
+            : '<span style="color:#888;">Pendente</span>';
+          return `<tr style="border-top:1px solid #1e1e1e;">
+            <td style="padding:6px 4px;">
+              <input type="checkbox" class="conf-check" value="${ag.id}" ${checked} ${disabled}
+                style="width:15px;height:15px;cursor:pointer;accent-color:var(--accent);" />
+            </td>
+            <td style="padding:6px 4px;">${ag.clienteNome || '—'}</td>
+            <td style="padding:6px 4px;">${ag.horario || '—'}</td>
+            <td style="padding:6px 4px;color:var(--text-muted);">${ag.servico || '—'}</td>
+            <td style="padding:6px 4px;">${situacao}</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>`;
+  }
+
+  function selecionarTodos(val) {
+    document.querySelectorAll('.conf-check:not(:disabled)').forEach(c => c.checked = val);
+  }
+
+  async function dispararSelecionados() {
+    const dataInput = document.getElementById('confirmacaoData').value;
+    const ids = [...document.querySelectorAll('.conf-check:checked')].map(c => c.value);
+    if (!ids.length) { alert('Selecione ao menos um cliente.'); return; }
+
+    const el = document.getElementById('confirmacaoResult');
+    el.textContent = 'Disparando...';
+    el.style.color = 'var(--text-muted)';
+
+    const r = await api('/api/confirmacoes/disparar', { method: 'POST', body: { data: dataInput, ids } });
+
+    if (!r.success) { el.textContent = 'Erro: ' + r.error; el.style.color = 'var(--red)'; return; }
+
+    const enviados = r.resultados.filter(x => x.status === 'enviado').length;
+    const erros    = r.resultados.filter(x => x.status === 'erro').length;
+    el.textContent = `✓ ${enviados} enviada(s)${erros ? ' · ' + erros + ' erro(s)' : ''}`;
+    el.style.color = enviados > 0 ? 'var(--accent)' : 'var(--red)';
+
+    // Atualizar lista para refletir os enviados
+    await carregarAgendamentos();
+  }
+
+  // Pré-preencher data com amanhã ao carregar
+  window.addEventListener('DOMContentLoaded', () => {
+    const el = document.getElementById('confirmacaoData');
+    if (el) { const d = new Date(); d.setDate(d.getDate()+1); el.value = d.toISOString().split('T')[0]; }
+  });
 
   async function toggleDemo(el) {
     const r = await api('/api/demo/toggle', { method: 'POST', body: {} });

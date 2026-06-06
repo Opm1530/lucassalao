@@ -225,12 +225,12 @@ router.get('/confirmacoes', async (req, res) => {
   }
 });
 
-// Disparar confirmações manualmente para uma data
+// Disparar confirmações manualmente — data inteira ou IDs específicos
 router.post('/confirmacoes/disparar', async (req, res) => {
   try {
-    const { data } = req.body;
+    const { data, ids } = req.body;
     if (!data) return res.status(400).json({ error: 'Campo "data" obrigatório (YYYY-MM-DD)' });
-    const resultados = await confirmacaoService.dispararConfirmacoes(data);
+    const resultados = await confirmacaoService.dispararConfirmacoes(data, ids || null);
     res.json({ success: true, resultados });
   } catch (err) {
     res.status(500).json({ error: err.message });
