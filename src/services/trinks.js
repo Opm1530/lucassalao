@@ -324,7 +324,7 @@ async function listarAgendamentosCliente(clienteId) {
 
 async function listarDisponibilidade(data) {
   const cacheKey = `disp_${data}`;
-  const cached = fromCache(cacheKey, 10 * 60 * 1000); // cache 10 min
+  const cached = fromCache(cacheKey, 2 * 60 * 1000); // cache 2 min
   if (cached) return cached;
 
   if (isDemoMode()) {
