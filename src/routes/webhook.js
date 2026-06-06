@@ -161,6 +161,10 @@ async function processMessage(phone, text, isLatest = () => true) {
     if (dateMatch) {
       requestedDate = parseDate(dateMatch[0]);
     } else {
+      // Tenta detectar "25 de julho", "5 agosto", etc.
+      requestedDate = parseDiaMes(text);
+    }
+    if (!requestedDate) {
       // Tenta detectar dia da semana no texto e converter para data
       requestedDate = parseDiaSemana(text);
     }
@@ -385,6 +389,24 @@ function parseDate(str) {
   const month = parts[1].padStart(2, '0');
   const year  = parts[2] ? (parts[2].length === 2 ? `20${parts[2]}` : parts[2]) : new Date().getFullYear().toString();
   return `${year}-${month}-${day}`;
+}
+
+// Detecta "DD de Mês" (ex: "25 de julho", "5 de agosto") no texto e retorna AAAA-MM-DD
+function parseDiaMes(text) {
+  const meses = {
+    janeiro: 1, fevereiro: 2, março: 3, marco: 3, abril: 4, maio: 5, junho: 6,
+    julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+  };
+  const lower = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // "25 de julho" ou "25 julho"
+  const match = lower.match(/(\d{1,2})\s+(?:de\s+)?([a-zç]+)/);
+  if (!match) return null;
+  const dia = parseInt(match[1], 10);
+  const mesNome = match[2];
+  const mes = meses[mesNome];
+  if (!mes || dia < 1 || dia > 31) return null;
+  const ano = new Date().getFullYear();
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
 // Detecta dia da semana no texto e retorna a próxima ocorrência em AAAA-MM-DD
