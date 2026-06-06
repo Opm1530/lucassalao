@@ -525,6 +525,20 @@
           <div class="toggle-track"></div>
         </label>
       </div>
+      <div class="bot-toggle" style="margin-top:10px;">
+        <span style="color:#60a5fa;">Confirmações automáticas</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="confirmacaoToggle" onchange="toggleConfirmacao(this)" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div class="bot-toggle" style="margin-top:10px;">
+        <span style="color:#f472b6;">Mensagens de aniversário</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="aniversarioToggle" onchange="toggleAniversario(this)" />
+          <div class="toggle-track"></div>
+        </label>
+      </div>
       <div id="demoBadge" style="display:none; margin-top:8px; font-size:11px; color:var(--yellow); background:rgba(250,204,21,0.1); border-radius:6px; padding:4px 8px; text-align:center;">
         ⚠️ Trinks simulado
       </div>
@@ -811,6 +825,8 @@
       if (el && data[f]) el.value = data[f];
     }
     document.getElementById('botToggle').checked = data.bot_active === 'true';
+    document.getElementById('confirmacaoToggle').checked = data.confirmacao_automatica === 'true';
+    document.getElementById('aniversarioToggle').checked = data.aniversario_ativo === 'true';
     applyIdentity(data);
   }
 
@@ -846,6 +862,16 @@
   async function toggleBot(el) {
     const r = await api('/api/bot/toggle', { method: 'POST', body: {} });
     el.checked = r.active;
+  }
+
+  async function toggleConfirmacao(el) {
+    const r = await api('/api/confirmacoes/toggle', { method: 'POST', body: {} });
+    el.checked = r.confirmacao_automatica;
+  }
+
+  async function toggleAniversario(el) {
+    const r = await api('/api/aniversario/toggle', { method: 'POST', body: {} });
+    el.checked = r.aniversario_ativo;
   }
 
   async function toggleDemo(el) {

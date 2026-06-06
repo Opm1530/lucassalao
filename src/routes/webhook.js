@@ -5,6 +5,7 @@ const openaiService = require('../services/openai');
 const trinksService = require('../services/trinks');
 const evolutionService = require('../services/evolution');
 const whisperService = require('../services/whisper');
+const confirmacaoService = require('../services/confirmacao');
 
 // ─── Deduplicação ─────────────────────────────────────────────────────────────
 const processedMessages = new Set();
@@ -136,6 +137,10 @@ async function transcribeAudio(phone, messageData) {
 
 // ─── Processamento principal ──────────────────────────────────────────────────
 async function processMessage(phone, text, isLatest = () => true) {
+  // Verificar se é resposta a uma mensagem de confirmação de agendamento
+  const foiConfirmacao = await confirmacaoService.processarResposta(phone, text);
+  if (foiConfirmacao) return; // resposta tratada — não passa para o fluxo normal do bot
+
   const conv = await db.getConversation(phone);
 
   const MAX_HISTORY = parseInt(db.getConfig('max_history') || '20', 10);

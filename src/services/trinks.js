@@ -417,6 +417,109 @@ async function cancelarAgendamento(agendamentoId) {
   }
 }
 
+async function listarAgendamentosPorData(data) {
+  if (isDemoMode()) {
+    return demoAgendamentos
+      .filter(a => a.data === data)
+      .map(a => ({
+        id: a.id,
+        servico: DEMO_DATA.servicos.find(s => s.serviceId === a.servicoId)?.serviceName ?? '',
+        profissional: 'Lucas Rocha',
+        data: a.data,
+        horario: a.horario,
+        duracao: a.duracao,
+        status: 'aguardando',
+        clienteId: a.clienteId,
+        clienteNome: null,
+        clienteWhatsApp: a.clientePhone,
+      }));
+  }
+
+  const client = getClient();
+  try {
+    const dataInicio = `${data}T00:00:00`;
+    const dataFim    = `${data}T23:59:59`;
+    const { data: resp } = await client.get('/v1/agendamentos', {
+      params: { dataInicio, dataFim, pageSize: 100 },
+    });
+    const items = ensureArray(resp);
+    return items.map(a => ({
+      id: a.id,
+      servico: a.servico?.nome ?? a.servicoNome ?? '',
+      profissional: a.profissional?.nome ?? a.profissionalNome ?? '',
+      data: a.dataHoraInicio ? a.dataHoraInicio.split('T')[0] : '',
+      horario: a.dataHoraInicio ? a.dataHoraInicio.split('T')[1]?.substring(0, 5) : '',
+      duracao: a.duracaoEmMinutos ?? 0,
+      status: a.status ?? 'aguardando',
+      clienteId: a.cliente?.id ?? a.clienteId ?? null,
+      clienteNome: a.cliente?.nome ?? a.clienteNome ?? null,
+      clienteWhatsApp: a.cliente?.whatsapp ?? a.clienteWhatsApp ?? null,
+    }));
+  } catch (err) {
+    console.error('[Trinks] Erro ao listar agendamentos por data:', err.message);
+    return [];
+  }
+}
+
+async function confirmarAgendamento(agendamentoId) {
+  if (isDemoMode()) {
+    console.log(`[Demo] Agendamento ${agendamentoId} confirmado`);
+    return;
+  }
+  const client = getClient();
+  try {
+    await client.patch(`/v1/agendamentos/${agendamentoId}/status/confirmado`);
+    console.log(`[Trinks] Agendamento ${agendamentoId} confirmado`);
+  } catch (err) {
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[Trinks] Falha ao confirmar agendamento ${agendamentoId}:`, detail);
+    throw new Error(detail);
+  }
+}
+
+async function marcarFaltou(agendamentoId) {
+  if (isDemoMode()) {
+    console.log(`[Demo] Agendamento ${agendamentoId} marcado como faltou`);
+    return;
+  }
+  const client = getClient();
+  try {
+    await client.patch(`/v1/agendamentos/${agendamentoId}/status/faltou`);
+    console.log(`[Trinks] Agendamento ${agendamentoId} marcado como faltou`);
+  } catch (err) {
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    console.error(`[Trinks] Falha ao marcar faltou ${agendamentoId}:`, detail);
+    throw new Error(detail);
+  }
+}
+
+async function buscarAniversariantesHoje() {
+  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const dia = String(hoje.getDate()).padStart(2, '0');
+  const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+
+  if (isDemoMode()) return [];
+
+  const client = getClient();
+  try {
+    const { data } = await client.get('/v1/clientes', {
+      params: { diaNascimento: dia, mesNascimento: mes, pageSize: 100 },
+    });
+    const items = ensureArray(data);
+    return items
+      .filter(c => c.whatsapp || c.telefone)
+      .map(c => ({
+        id: c.id,
+        nome: c.nome,
+        whatsapp: c.whatsapp ?? c.telefone ?? null,
+        email: c.email ?? null,
+      }));
+  } catch (err) {
+    console.error('[Trinks] Erro ao buscar aniversariantes:', err.message);
+    return [];
+  }
+}
+
 // ─── Contexto completo para o OpenAI ──────────────────────────────────────────
 
 async function buildContext(phone, requestedDate = null) {
@@ -437,11 +540,21 @@ async function buildContext(phone, requestedDate = null) {
 
   if (cliente) {
     const agendamentos = await listarAgendamentosCliente(cliente.id);
+    // Normalizar data de nascimento para DD/MM
+    let dataNascimento = null;
+    const rawNasc = cliente.dataNascimento ?? cliente.data_nascimento ?? null;
+    if (rawNasc) {
+      const d = new Date(rawNasc);
+      if (!isNaN(d)) {
+        dataNascimento = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+      }
+    }
     lead = {
       clienteId: cliente.id,
       clienteNome: cliente.nome,
       clienteWhatsApp: phone.replace('@s.whatsapp.net', ''),
       clienteEmail: cliente.email ?? null,
+      dataNascimento,
       agendamentos,
     };
   }
@@ -567,6 +680,10 @@ module.exports = {
   buscarClientePorTelefone,
   criarCliente,
   listarAgendamentosCliente,
+  listarAgendamentosPorData,
+  confirmarAgendamento,
+  marcarFaltou,
+  buscarAniversariantesHoje,
   listarDisponibilidade,
   filtrarSlotsPorDuracao,
   criarAgendamento,

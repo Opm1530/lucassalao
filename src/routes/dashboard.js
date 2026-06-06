@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db/database');
 const evolutionService = require('../services/evolution');
 const trinksService = require('../services/trinks');
+const confirmacaoService = require('../services/confirmacao');
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -186,6 +187,51 @@ router.post('/conversations/:phone/human-mode', async (req, res) => {
     await db.setHumanMode(phone, true);
     await db.addLog(phone, 'system', 'MODO_HUMANO_ATIVADO_MANUAL');
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Confirmação de agendamentos ─────────────────────────────────────────────
+
+router.post('/confirmacoes/toggle', (req, res) => {
+  const current = db.getConfig('confirmacao_automatica') === 'true';
+  db.setConfig('confirmacao_automatica', String(!current));
+  res.json({ confirmacao_automatica: !current });
+});
+
+router.post('/aniversario/toggle', (req, res) => {
+  const current = db.getConfig('aniversario_ativo') === 'true';
+  db.setConfig('aniversario_ativo', String(!current));
+  res.json({ aniversario_ativo: !current });
+});
+
+// Listar agendamentos de uma data com status de disparo
+router.get('/confirmacoes', async (req, res) => {
+  try {
+    const data = req.query.data || new Date().toISOString().split('T')[0];
+    const [agendamentos, disparos] = await Promise.all([
+      trinksService.listarAgendamentosPorData(data),
+      db.listarDisparos(data),
+    ]);
+    const disparosMap = Object.fromEntries(disparos.map(d => [d.agendamento_id, d]));
+    const resultado = agendamentos.map(ag => ({
+      ...ag,
+      disparo: disparosMap[String(ag.id)] || null,
+    }));
+    res.json(resultado);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Disparar confirmações manualmente para uma data
+router.post('/confirmacoes/disparar', async (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data) return res.status(400).json({ error: 'Campo "data" obrigatório (YYYY-MM-DD)' });
+    const resultados = await confirmacaoService.dispararConfirmacoes(data);
+    res.json({ success: true, resultados });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

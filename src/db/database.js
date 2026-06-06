@@ -56,6 +56,29 @@ const SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS logs_phone_idx          ON logs(phone);
   CREATE INDEX IF NOT EXISTS conversations_updated_idx ON conversations(updated_at DESC);
+
+  CREATE TABLE IF NOT EXISTS aniversario_disparos (
+    id         SERIAL PRIMARY KEY,
+    cliente_id TEXT   NOT NULL,
+    phone      TEXT   NOT NULL,
+    nome       TEXT,
+    data_envio DATE   NOT NULL,
+    UNIQUE(cliente_id, data_envio)
+  );
+
+  CREATE TABLE IF NOT EXISTS confirmacao_disparos (
+    id              SERIAL      PRIMARY KEY,
+    agendamento_id  TEXT        NOT NULL,
+    phone           TEXT        NOT NULL,
+    cliente_nome    TEXT,
+    servico         TEXT,
+    data_agendamento TEXT,
+    horario         TEXT,
+    status          TEXT        NOT NULL DEFAULT 'enviado',
+    enviado_em      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    respondido_em   TIMESTAMPTZ,
+    UNIQUE(agendamento_id)
+  );
 `;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -223,6 +246,69 @@ async function getLogs(phone, limit = 50) {
   return rows;
 }
 
+// ─── Aniversários ─────────────────────────────────────────────────────────────
+
+async function jaEnviouAniversarioHoje(clienteId) {
+  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+    .toISOString().split('T')[0];
+  const { rows } = await pool.query(
+    `SELECT 1 FROM aniversario_disparos WHERE cliente_id = $1 AND data_envio = $2 LIMIT 1`,
+    [String(clienteId), hoje]
+  );
+  return rows.length > 0;
+}
+
+async function registrarAniversario(clienteId, phone, nome) {
+  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+    .toISOString().split('T')[0];
+  await pool.query(
+    `INSERT INTO aniversario_disparos (cliente_id, phone, nome, data_envio) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+    [String(clienteId), phone, nome, hoje]
+  );
+}
+
+// ─── Confirmação de agendamentos ──────────────────────────────────────────────
+
+async function registrarDisparo({ agendamentoId, phone, clienteNome, servico, dataAgendamento, horario }) {
+  await pool.query(
+    `INSERT INTO confirmacao_disparos (agendamento_id, phone, cliente_nome, servico, data_agendamento, horario)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (agendamento_id) DO NOTHING`,
+    [String(agendamentoId), phone, clienteNome, servico, dataAgendamento, horario]
+  );
+}
+
+async function jaEnviouDisparo(agendamentoId) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM confirmacao_disparos WHERE agendamento_id = $1 LIMIT 1`,
+    [String(agendamentoId)]
+  );
+  return rows.length > 0;
+}
+
+async function atualizarStatusDisparo(agendamentoId, status) {
+  await pool.query(
+    `UPDATE confirmacao_disparos SET status = $1, respondido_em = NOW() WHERE agendamento_id = $2`,
+    [status, String(agendamentoId)]
+  );
+}
+
+async function getDisparoByPhone(phone) {
+  const { rows } = await pool.query(
+    `SELECT * FROM confirmacao_disparos WHERE phone = $1 AND status = 'enviado' ORDER BY enviado_em DESC LIMIT 1`,
+    [phone]
+  );
+  return rows[0] || null;
+}
+
+async function listarDisparos(dataAgendamento) {
+  const { rows } = await pool.query(
+    `SELECT * FROM confirmacao_disparos WHERE data_agendamento = $1 ORDER BY horario ASC`,
+    [dataAgendamento]
+  );
+  return rows;
+}
+
 module.exports = {
   init,
   getConfig,
@@ -237,4 +323,11 @@ module.exports = {
   isHumanMode,
   addLog,
   getLogs,
+  jaEnviouAniversarioHoje,
+  registrarAniversario,
+  registrarDisparo,
+  jaEnviouDisparo,
+  atualizarStatusDisparo,
+  getDisparoByPhone,
+  listarDisparos,
 };
