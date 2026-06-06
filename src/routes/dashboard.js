@@ -192,6 +192,52 @@ router.post('/conversations/:phone/human-mode', async (req, res) => {
   }
 });
 
+// Retry: reprocessa a última mensagem do cliente que não teve resposta do bot
+router.post('/conversations/:phone/retry', async (req, res) => {
+  try {
+    const phone = decodeURIComponent(req.params.phone);
+    const conv = await db.getConversation(phone);
+
+    const history = conv.history || [];
+
+    // Verifica se a última mensagem do histórico JÁ tem resposta do bot (não precisa de retry)
+    const lastMsg = history[history.length - 1];
+    if (!lastMsg || lastMsg.role === 'assistant') {
+      return res.status(400).json({ error: 'A última mensagem já foi respondida pelo bot.' });
+    }
+
+    // Coleta todas as mensagens consecutivas do cliente no final (sem resposta do bot entre elas)
+    const mensagensCliente = [];
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i].role === 'user') {
+        mensagensCliente.unshift(history[i].content);
+      } else {
+        break; // parou quando encontrou mensagem do bot
+      }
+    }
+
+    if (mensagensCliente.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma mensagem do cliente encontrada.' });
+    }
+
+    const textoFinal = mensagensCliente.join('\n');
+
+    // Remove as mensagens do cliente do histórico para não duplicar ao reprocessar
+    const historyLimpo = history.slice(0, history.length - mensagensCliente.length);
+    await db.saveConversation(phone, historyLimpo, conv.stage, conv.client_data);
+
+    // Dispara o processamento em background (não bloqueia o response)
+    res.json({ success: true, mensagem: textoFinal, total: mensagensCliente.length });
+
+    // Importa e chama o processamento do webhook
+    const { processMessageExternal } = require('./webhook');
+    await processMessageExternal(phone, lastUserMsg.content);
+  } catch (err) {
+    console.error('[Retry] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Confirmação de agendamentos ─────────────────────────────────────────────
 
 router.post('/confirmacoes/toggle', (req, res) => {

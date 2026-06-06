@@ -34,21 +34,43 @@ async function chat(history, context) {
     ...history,
   ];
 
-  const response = await client.chat.completions.create({
-    model,
-    messages,
-    response_format: { type: 'json_object' },
-    temperature: 0.3,
-    max_tokens: 1500,
-  });
+  // Retry com backoff para erros 429 (quota excedida) e 5xx (erro servidor)
+  const MAX_RETRIES = 3;
+  const RETRY_DELAYS = [5000, 15000, 30000]; // 5s, 15s, 30s
 
-  const raw = response.choices[0].message.content;
+  let lastError;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+        max_tokens: 1500,
+      });
 
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new Error(`OpenAI retornou JSON inválido: ${raw}`);
+      const raw = response.choices[0].message.content;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        throw new Error(`OpenAI retornou JSON inválido: ${raw}`);
+      }
+    } catch (err) {
+      lastError = err;
+      const status = err?.status ?? err?.response?.status;
+      const isRetryable = status === 429 || (status >= 500 && status < 600);
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAYS[attempt];
+        console.warn(`[OpenAI] Erro ${status} na tentativa ${attempt + 1}/${MAX_RETRIES + 1} — aguardando ${delay / 1000}s antes de tentar novamente...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw err;
+      }
+    }
   }
+
+  throw lastError;
 }
 
 module.exports = { chat };

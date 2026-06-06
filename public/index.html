@@ -811,6 +811,10 @@
           style="display:none;background:rgba(250,204,21,0.12);color:var(--yellow);border:1px solid rgba(250,204,21,0.3);">
           👤 Passar p/ humano
         </button>
+        <button id="btnRetry" class="btn btn-sm" onclick="retryLastMessage()"
+          style="display:none;background:rgba(250,204,21,0.12);color:var(--yellow);border:1px solid rgba(250,204,21,0.3);">
+          🔄 Retry
+        </button>
         <button class="btn btn-outline btn-sm" onclick="closeChat()">✕</button>
       </div>
     </div>
@@ -1149,6 +1153,12 @@
       humanBtn.style.display  = 'inline-flex';
     }
 
+    // Mostrar botão Retry se a última mensagem do histórico for do cliente (sem resposta do bot)
+    const retryBtn = document.getElementById('btnRetry');
+    const history = data.history || [];
+    const lastHistoryMsg = history[history.length - 1];
+    retryBtn.style.display = (lastHistoryMsg?.role === 'user') ? 'inline-flex' : 'none';
+
     const msgs = document.getElementById('chatMessages');
     msgs.innerHTML = '';
     const logs = data.logs || [];
@@ -1177,6 +1187,23 @@
   function closeChat() {
     document.getElementById('chatModal').classList.remove('open');
     currentPhone = null;
+  }
+
+  async function retryLastMessage() {
+    if (!currentPhone) return;
+    const btn = document.getElementById('btnRetry');
+    btn.disabled = true;
+    btn.textContent = '⏳ Enviando...';
+    try {
+      const res = await api(`/api/conversations/${encodeURIComponent(currentPhone)}/retry`, { method: 'POST', body: {} });
+      if (res.error) throw new Error(res.error);
+      btn.textContent = '✅ Enviado!';
+      setTimeout(() => openChat(currentPhone), 2000); // recarrega o chat
+    } catch (err) {
+      btn.textContent = '❌ Erro';
+      alert('Erro ao fazer retry: ' + err.message);
+      setTimeout(() => { btn.textContent = '🔄 Retry'; btn.disabled = false; }, 2000);
+    }
   }
 
   async function resetConversation(phone) {

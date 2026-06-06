@@ -455,4 +455,10 @@ function buildISODate(dataStr, horario) {
   return `${iso}T${horario}:00`;
 }
 
+// Permite chamar o processamento externamente (ex: retry pelo dashboard)
+async function processMessageExternal(phone, text) {
+  return processMessage(phone, text, () => true);
+}
+
 module.exports = router;
+module.exports.processMessageExternal = processMessageExternal;
