@@ -443,7 +443,9 @@ async function listarAgendamentosPorData(data) {
       params: { dataInicio, dataFim, pageSize: 100 },
     });
     const items = ensureArray(resp);
-    return items.map(a => ({
+
+    // Mapear agendamentos básicos
+    const agendamentos = items.map(a => ({
       id: a.id,
       servico: a.servico?.nome ?? a.servicoNome ?? '',
       profissional: a.profissional?.nome ?? a.profissionalNome ?? '',
@@ -453,8 +455,30 @@ async function listarAgendamentosPorData(data) {
       status: a.status ?? 'aguardando',
       clienteId: a.cliente?.id ?? a.clienteId ?? null,
       clienteNome: a.cliente?.nome ?? a.clienteNome ?? null,
-      clienteWhatsApp: a.cliente?.whatsapp ?? a.clienteWhatsApp ?? null,
+      clienteWhatsApp: a.cliente?.whatsapp ?? a.cliente?.telefone ?? a.clienteWhatsApp ?? null,
     }));
+
+    // Buscar WhatsApp dos clientes que não vieram com o campo preenchido
+    const semWpp = agendamentos.filter(a => !a.clienteWhatsApp && a.clienteId);
+    const idsUnicos = [...new Set(semWpp.map(a => a.clienteId))];
+
+    if (idsUnicos.length > 0) {
+      const detalheMap = {};
+      await Promise.all(idsUnicos.map(async (id) => {
+        try {
+          const { data: cliente } = await client.get(`/v1/clientes/${id}`);
+          detalheMap[id] = cliente?.whatsapp ?? cliente?.telefone ?? null;
+        } catch { /* silencioso */ }
+      }));
+
+      for (const ag of agendamentos) {
+        if (!ag.clienteWhatsApp && detalheMap[ag.clienteId]) {
+          ag.clienteWhatsApp = detalheMap[ag.clienteId];
+        }
+      }
+    }
+
+    return agendamentos;
   } catch (err) {
     console.error('[Trinks] Erro ao listar agendamentos por data:', err.message);
     return [];
