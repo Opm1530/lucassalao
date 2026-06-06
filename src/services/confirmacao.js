@@ -95,7 +95,7 @@ async function verificarEDisparar() {
 
       // ── Disparar confirmação ──────────────────────────────────────────
       if (!jaEnviou && deveDisparar(ag.data, ag.horario, agora)) {
-        const phone = ag.clienteWhatsApp.replace(/\D/g, '');
+        const phone = String(ag.clienteWhatsApp).replace(/\D/g, '');
         const phoneJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
         const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 
@@ -180,7 +180,7 @@ async function dispararConfirmacoes(dataAgendamento, ids = null) {
       continue;
     }
 
-    const phone = ag.clienteWhatsApp.replace(/\D/g, '');
+    const phone = String(ag.clienteWhatsApp).replace(/\D/g, '');
     const phoneJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
     const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 

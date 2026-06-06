@@ -20,7 +20,7 @@ async function dispararAniversarios() {
   const resultados = [];
 
   for (const cliente of aniversariantes) {
-    const phone = (cliente.whatsapp || '').replace(/\D/g, '');
+    const phone = String(cliente.whatsapp || '').replace(/\D/g, '');
     if (!phone) continue;
 
     const phoneJid = `${phone}@s.whatsapp.net`;
