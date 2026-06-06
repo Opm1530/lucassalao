@@ -398,8 +398,8 @@ function parseDiaMes(text) {
     julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
   };
   const lower = text.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  // "25 de julho" ou "25 julho"
-  const match = lower.match(/(\d{1,2})\s+(?:de\s+)?([a-zç]+)/);
+  // "25 de julho" ou "25 julho" — mínimo 4 letras para não capturar "de"
+  const match = lower.match(/(\d{1,2})\s+(?:de\s+)?([a-zç]{4,})/);
   if (!match) return null;
   const dia = parseInt(match[1], 10);
   const mesNome = match[2];
