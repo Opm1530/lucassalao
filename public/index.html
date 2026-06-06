@@ -1153,11 +1153,11 @@
       humanBtn.style.display  = 'inline-flex';
     }
 
-    // Mostrar botão Retry se a última mensagem do histórico for do cliente (sem resposta do bot)
+    // Mostrar botão Retry se o último log for do cliente (sem resposta do bot depois)
     const retryBtn = document.getElementById('btnRetry');
-    const history = data.history || [];
-    const lastHistoryMsg = history[history.length - 1];
-    retryBtn.style.display = (lastHistoryMsg?.role === 'user') ? 'inline-flex' : 'none';
+    const logsNaoSistema = (data.logs || []).filter(l => l.direction !== 'system');
+    const lastLog = logsNaoSistema[logsNaoSistema.length - 1];
+    retryBtn.style.display = (lastLog?.direction === 'in') ? 'inline-flex' : 'none';
 
     const msgs = document.getElementById('chatMessages');
     msgs.innerHTML = '';
