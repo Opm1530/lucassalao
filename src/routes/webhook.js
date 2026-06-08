@@ -291,7 +291,7 @@ async function processMessage(phone, text, isLatest = () => true) {
           resultados.push({ item, ok: true });
         } catch (err) {
           console.error(`[Bot] Erro ao criar agendamento (${item.servico}):`, err.message);
-          resultados.push({ item, ok: false, erro: err.message });
+          resultados.push({ item, ok: false, erro: err.message, isConflito: err.isConflito });
         }
       }
 
@@ -326,8 +326,15 @@ async function processMessage(phone, text, isLatest = () => true) {
           mensagens.push('Se precisar de mais alguma coisa, é só avisar!');
         }
       } else {
-        mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
-        mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');
+        // Verifica se alguma falha foi por conflito de horário
+        const conflito = falhas.find(r => r.isConflito);
+        if (conflito) {
+          mensagens.push(`Ops! O horário das ${conflito.item.horario} acabou de ser reservado por outra pessoa. 😕`);
+          mensagens.push('Me diz outro horário de sua preferência e vejo o que temos disponível!');
+        } else {
+          mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
+          mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');
+        }
       }
     }
   } else if (acao === 'cancelar_agendamento') {

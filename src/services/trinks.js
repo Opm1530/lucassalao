@@ -323,19 +323,17 @@ async function listarAgendamentosCliente(clienteId) {
 }
 
 async function listarDisponibilidade(data) {
-  const cacheKey = `disp_${data}`;
-  const cached = fromCache(cacheKey, 2 * 60 * 1000); // cache 2 min
-  if (cached) return cached;
+  // SEM CACHE — disponibilidade é sempre consultada em tempo real no Trinks
+  // para evitar oferecer horários já ocupados (especialmente quando o salão
+  // marca agendamentos manualmente no painel do Trinks)
 
   if (isDemoMode()) {
-    const result = [{
+    return [{
       profissionalId: 1,
       profissionalNome: 'Lucas Rocha',
       horariosDisponiveis: ['09:00','09:30','10:00','10:30','11:00','14:00','14:30','15:00','15:30','16:00'],
       data,
     }];
-    toCache(cacheKey, result);
-    return result;
   }
 
   const client = getClient();
@@ -345,14 +343,12 @@ async function listarDisponibilidade(data) {
     });
 
     const items = ensureArray(resp);
-    const result = items.map(prof => ({
+    return items.map(prof => ({
       profissionalId: prof.id,
       profissionalNome: prof.nome,
       horariosDisponiveis: prof.horariosVagos ?? [],
       data,
     }));
-    toCache(cacheKey, result);
-    return result;
   } catch (err) {
     console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
@@ -386,11 +382,29 @@ async function criarAgendamento({ clienteId, servicoId, profissionalId, dataHora
     console.log(`[Trinks] Criando agendamento com payload:`, JSON.stringify(payload));
 
     const { data } = await client.post('/v1/agendamentos', payload);
+
+    // Invalida o cache de disponibilidade da data do agendamento
+    // para que a próxima consulta reflita o horário já ocupado
+    const dataStr = dataHora.split('T')[0];
+    cache.delete(`disp_${dataStr}`);
+    console.log(`[Trinks] Cache de disponibilidade invalidado para ${dataStr}`);
+
     return data;
   } catch (err) {
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
     console.error(`[Trinks API Error] Falha ao criar agendamento:`, detail);
-    throw new Error(detail);
+
+    // Sinaliza conflito de horário para o webhook tratar com mensagem amigável
+    const isConflito =
+      detail.toLowerCase().includes('conflict') ||
+      detail.toLowerCase().includes('horário') ||
+      detail.toLowerCase().includes('indisponível') ||
+      detail.toLowerCase().includes('ocupado') ||
+      err.response?.status === 409;
+
+    const error = new Error(detail);
+    if (isConflito) error.isConflito = true;
+    throw error;
   }
 }
 
