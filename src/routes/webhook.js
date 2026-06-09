@@ -149,7 +149,7 @@ async function processMessage(phone, text, isLatest = () => true) {
     conv.history = conv.history.slice(conv.history.length - MAX_HISTORY);
   }
 
-  conv.history.push({ role: 'user', content: text });
+  conv.history.push({ role: 'user', content: text, ts: Date.now() });
   await db.addLog(phone, 'in', text);
 
   // Salva a mensagem do cliente ANTES de chamar a OpenAI —
@@ -211,7 +211,7 @@ async function processMessage(phone, text, isLatest = () => true) {
     return;
   }
 
-  conv.history.push({ role: 'assistant', content: JSON.stringify(aiResponse) });
+  conv.history.push({ role: 'assistant', content: JSON.stringify(aiResponse), ts: Date.now() });
 
   const { acao, mensagens = [], novoStage, agendamento, agendamento_cancelar, cliente, encaminharHumano } = aiResponse;
   console.log(`[Bot] acao=${acao} | agendamento_cancelar=${JSON.stringify(agendamento_cancelar)} | agendamento=${JSON.stringify(agendamento)?.slice(0,200)}`);
@@ -277,13 +277,30 @@ async function processMessage(phone, text, isLatest = () => true) {
         if (!profissionalId && context.profissionais.length === 1) {
           profissionalId = context.profissionais[0].profissionalId;
         }
+        const dataHoraISO = buildISODate(item.data, item.horario);
+        const duracaoNum = typeof item.duracao === 'number' ? item.duracao : parseInt(item.duracao, 10);
+
+        // VERIFICAÇÃO DETERMINÍSTICA antes de marcar — checa em tempo real no Trinks
+        // se o slot ainda está livre. Se não estiver, aborta sem passar pela IA.
+        const checagem = await trinksService.verificarSlotLivre({
+          profissionalId,
+          dataHora: dataHoraISO,
+          duracao: duracaoNum,
+        });
+
+        if (!checagem.livre) {
+          console.warn(`[Bot] Slot ocupado detectado antes de marcar: ${item.data} ${item.horario} — ${checagem.motivo}`);
+          resultados.push({ item, ok: false, isConflito: true, erro: checagem.motivo });
+          continue;
+        }
+
         try {
           const result = await trinksService.criarAgendamento({
             clienteId,
             servicoId: item.id,
             profissionalId,
-            dataHora: buildISODate(item.data, item.horario),
-            duracao: typeof item.duracao === 'number' ? item.duracao : parseInt(item.duracao, 10),
+            dataHora: dataHoraISO,
+            duracao: duracaoNum,
             valor: item.preco,
             observacoes: cliente?.observacao || null,
           });
@@ -329,8 +346,30 @@ async function processMessage(phone, text, isLatest = () => true) {
         // Verifica se alguma falha foi por conflito de horário
         const conflito = falhas.find(r => r.isConflito);
         if (conflito) {
-          mensagens.push(`Ops! O horário das ${conflito.item.horario} acabou de ser reservado por outra pessoa. 😕`);
-          mensagens.push('Me diz outro horário de sua preferência e vejo o que temos disponível!');
+          // Em vez de mensagem fixa, injeta no histórico e pede para a IA gerar
+          // a resposta contextual (mais natural dentro da conversa)
+          const nota = `SISTEMA: O horário ${conflito.item.horario} do dia ${conflito.item.data} para o serviço "${conflito.item.servico}" foi reservado por outra cliente no exato momento em que tentamos registrar. O agendamento NÃO foi criado. Avise a cliente de forma natural e empática que esse horário acabou de ser pego por outra pessoa, peça que ela escolha outro horário, e mostre os horários disponíveis atualizados (consulte loja.disponibilidade novamente — está atualizada).`;
+          conv.history.push({ role: 'user', content: nota, ts: Date.now() });
+
+          // Reconsulta contexto (sem cache — vai trazer o slot atualizado)
+          const novoContext = await trinksService.buildContext(phone, conflito.item.data.split('/').reverse().join('-'));
+          if (conv.client_data) {
+            novoContext.isCustomer = true;
+            novoContext.lead.clienteNome = conv.client_data.nome;
+            novoContext.lead.clienteWhatsApp = conv.client_data.whatsapp;
+            novoContext.lead.clienteEmail = conv.client_data.email;
+            novoContext.lead.clienteId = conv.client_data.clienteId;
+          }
+
+          try {
+            const respConflito = await openaiService.chat(conv.history, novoContext);
+            conv.history.push({ role: 'assistant', content: JSON.stringify(respConflito), ts: Date.now() });
+            mensagens.length = 0;
+            (respConflito.mensagens || []).forEach(m => mensagens.push(m));
+          } catch (err) {
+            console.error('[Bot] Erro ao gerar mensagem de conflito via IA:', err.message);
+            mensagens.push(`Ops, o horário das ${conflito.item.horario} acabou de ser reservado por outra pessoa. 😕 Pode me dizer outro horário?`);
+          }
         } else {
           mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
           mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');

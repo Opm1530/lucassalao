@@ -20,6 +20,36 @@ async function chat(history, context) {
   const dateStr = now.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Sao_Paulo' });
   const contextMessage = buildContextMessage(context, dateStr);
 
+  // Formata cada mensagem do histórico com prefixo de tempo legível para a IA
+  // Ex: [hoje 14:32] / [ontem 19:00] / [3 dias atrás 10:00]
+  const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const hojeStr = agora.toISOString().split('T')[0];
+  const ontem = new Date(agora); ontem.setDate(ontem.getDate() - 1);
+  const ontemStr = ontem.toISOString().split('T')[0];
+
+  function formatarPrefixo(ts) {
+    if (!ts) return '';
+    const d = new Date(new Date(ts).toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const dStr = d.toISOString().split('T')[0];
+    const dia = String(d.getDate()).padStart(2, '0');
+    const mes = String(d.getMonth() + 1).padStart(2, '0');
+    const ano = d.getFullYear();
+    const dataBR = `${dia}/${mes}/${ano}`;
+    const hora = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    if (dStr === hojeStr) return `[hoje ${dataBR} ${hora}] `;
+    if (dStr === ontemStr) return `[ontem ${dataBR} ${hora}] `;
+    const diffDias = Math.floor((agora - d) / (1000 * 60 * 60 * 24));
+    if (diffDias < 7) return `[${diffDias} dias atrás ${dataBR} ${hora}] `;
+    return `[${dataBR} ${hora}] `;
+  }
+
+  const historyComTempo = history.map(m => {
+    const prefixo = formatarPrefixo(m.ts);
+    // Para assistant, content é JSON — não prefixar (atrapalha o parse de exemplo)
+    if (m.role === 'assistant') return { role: m.role, content: m.content };
+    return { role: m.role, content: prefixo + m.content };
+  });
+
   const messages = [
     { role: 'system', content: systemPrompt },
     // Inject context as first user turn so the AI can reference it
@@ -31,7 +61,7 @@ async function chat(history, context) {
       role: 'assistant',
       content: '{"mensagens":[],"novoStage":"novo","intencao":"outro","acao":"nenhuma","agendamento":[],"agendamento_cancelar":null,"cliente":null,"lojaSelecionada":null,"encaminharHumano":false}',
     },
-    ...history,
+    ...historyComTempo,
   ];
 
   // Retry com backoff para erros 429 (quota excedida) e 5xx (erro servidor)

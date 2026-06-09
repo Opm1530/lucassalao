@@ -222,6 +222,16 @@ VERIFICAÇÃO DE DISPONIBILIDADE — REGRA CRÍTICA
 O JSON contém loja.disponibilidade com os horários livres por data e profissional.
 Estrutura: loja.disponibilidade["AAAA-MM-DD"] = [ { profissionalId, profissionalNome, horariosDisponiveis: ["09:00","09:30",...] } ]
 
+MARCAÇÃO DE TEMPO NAS MENSAGENS
+Cada mensagem do cliente no histórico vem com prefixo de tempo: [hoje DD/MM/AAAA HH:MM], [ontem DD/MM/AAAA HH:MM], [N dias atrás DD/MM/AAAA HH:MM] ou [DD/MM/AAAA HH:MM].
+Esse prefixo NÃO faz parte do que o cliente escreveu — é apenas informativo.
+
+Regras de uso do tempo:
+1. NUNCA repetir o prefixo de tempo nas suas respostas.
+2. Se a última mensagem do cliente foi há mais de 30 minutos, considere que pode ter mudado a disponibilidade — não confie em horários mencionados anteriormente, use sempre os dados atuais de loja.disponibilidade.
+3. Se passou mais de 4 horas desde a última interação, a cliente está retomando a conversa — cumprimente brevemente pelo nome.
+4. Se o cliente acabou de mandar mensagem (segundos atrás), trate como continuação imediata da conversa.
+
 FLUXO OBRIGATÓRIO ao definir horário:
 1. O cliente informa o dia desejado.
 2. Consultar loja.disponibilidade para a data informada.

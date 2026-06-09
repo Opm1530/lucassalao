@@ -355,6 +355,48 @@ async function listarDisponibilidade(data) {
   }
 }
 
+/**
+ * Verifica em tempo real se um slot está livre para o profissional.
+ * Checa todos os blocos de 30 min dentro da duração contra horariosVagos do Trinks.
+ * Retorna { livre: true } ou { livre: false, motivo: '...' }
+ */
+async function verificarSlotLivre({ profissionalId, dataHora, duracao }) {
+  if (isDemoMode()) return { livre: true };
+
+  try {
+    const data = dataHora.split('T')[0];
+    const horaInicio = dataHora.split('T')[1].substring(0, 5);
+    const [hh, mm] = horaInicio.split(':').map(Number);
+    const inicioMin = hh * 60 + mm;
+    const fimMin = inicioMin + Number(duracao || 30);
+
+    const client = getClient();
+    const { data: resp } = await client.get(`/v1/agendamentos/profissionais/${data}`, {
+      params: { pageSize: 100 },
+    });
+    const items = ensureArray(resp);
+    const prof = items.find(p => String(p.id) === String(profissionalId));
+    if (!prof) return { livre: false, motivo: 'profissional não encontrado' };
+
+    const vagos = new Set((prof.horariosVagos ?? []).map(h => {
+      const [a, b] = h.split(':').map(Number);
+      return a * 60 + b;
+    }));
+
+    // Todos os blocos de 30 min dentro da duração precisam estar vagos
+    for (let t = inicioMin; t < fimMin; t += 30) {
+      if (!vagos.has(t)) {
+        return { livre: false, motivo: `bloco ${Math.floor(t/60)}:${String(t%60).padStart(2,'0')} ocupado` };
+      }
+    }
+    return { livre: true };
+  } catch (err) {
+    console.error('[Trinks] Erro ao verificar slot livre:', err.message);
+    // Em caso de erro na verificação, deixa passar (o Trinks vai rejeitar se houver conflito)
+    return { livre: true };
+  }
+}
+
 async function criarAgendamento({ clienteId, servicoId, profissionalId, dataHora, duracao, valor, observacoes }) {
   if (isDemoMode()) {
     const id = ++demoAgendamentoIdSeq;
@@ -724,6 +766,7 @@ module.exports = {
   buscarAniversariantesHoje,
   listarDisponibilidade,
   filtrarSlotsPorDuracao,
+  verificarSlotLivre,
   criarAgendamento,
   cancelarAgendamento,
   buildContext,
