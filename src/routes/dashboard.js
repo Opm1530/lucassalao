@@ -136,6 +136,25 @@ router.post('/bot/toggle', (req, res) => {
   res.json({ active: !current });
 });
 
+// Endpoint unificado para o painel do operador — retorna estado de todos os toggles
+router.get('/operator-toggle/state', (req, res) => {
+  res.json({
+    bot_active: db.getConfig('bot_active') === 'true',
+    confirmacao_automatica: db.getConfig('confirmacao_automatica') === 'true',
+    aniversario_ativo: db.getConfig('aniversario_ativo') === 'true',
+  });
+});
+
+// Alterna um toggle específico — usado pelo painel do operador
+router.post('/operator-toggle/:key', (req, res) => {
+  const allowed = ['bot_active', 'confirmacao_automatica', 'aniversario_ativo'];
+  const key = req.params.key;
+  if (!allowed.includes(key)) return res.status(400).json({ error: 'Chave inválida.' });
+  const current = db.getConfig(key) === 'true';
+  db.setConfig(key, String(!current));
+  res.json({ key, active: !current });
+});
+
 // ─── Conversations ────────────────────────────────────────────────────────────
 
 router.get('/conversations', async (req, res) => {

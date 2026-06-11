@@ -150,7 +150,8 @@
         });
 
         if (res.ok) {
-          window.location.href = '/';
+          const data = await res.json().catch(() => ({}));
+          window.location.href = data.redirect || '/';
         } else {
           err.classList.add('show');
           btn.disabled = false;

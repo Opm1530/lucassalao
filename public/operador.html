@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel — Studio Lucas Rocha</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f13; --surface: #18181f; --surface2: #1e1e27; --border: #2a2a38;
+      --accent: #7c5cbf; --accent-light: #9b7de0; --accent-dim: rgba(124,92,191,0.15);
+      --green: #4ade80; --green-dim: rgba(74,222,128,0.12);
+      --red: #f87171; --red-dim: rgba(248,113,113,0.12);
+      --yellow: #facc15; --pink: #f472b6;
+      --text: #e8e8f0; --text-muted: #8888a8; --radius: 12px;
+    }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+    /* Header */
+    .header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 24px; }
+    .header h1 { font-size: 18px; color: var(--accent-light); }
+    .header p { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .btn { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); cursor: pointer; font-size: 13px; transition: all 0.15s; }
+    .btn:hover { background: var(--border); }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-light); }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-outline { background: transparent; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+    .tab { padding: 10px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 14px; color: var(--text-muted); transition: 0.15s; }
+    .tab:hover { color: var(--text); }
+    .tab.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent-light); }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
+
+    /* ─── BIG BOT TOGGLE ─── */
+    .bot-hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 24px;
+      text-align: center;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .bot-hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 0%, var(--accent-dim) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .bot-hero-content { position: relative; }
+    .bot-hero h2 { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 18px; font-weight: 500; }
+
+    .bot-switch {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .bot-switch-track {
+      position: relative;
+      width: 110px;
+      height: 56px;
+      border-radius: 56px;
+      background: var(--red-dim);
+      border: 2px solid var(--red);
+      transition: 0.3s;
+    }
+    .bot-switch-track.on {
+      background: var(--green-dim);
+      border-color: var(--green);
+    }
+    .bot-switch-track::after {
+      content: '';
+      position: absolute;
+      top: 4px; left: 4px;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 4px 12px rgba(248,113,113,0.4);
+      transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .bot-switch-track.on::after {
+      left: 58px;
+      background: var(--green);
+      box-shadow: 0 4px 12px rgba(74,222,128,0.4);
+    }
+    .bot-switch-label {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .bot-switch-label.off { color: var(--red); }
+    .bot-switch-label.on { color: var(--green); }
+    .bot-status-desc { color: var(--text-muted); font-size: 13px; margin-top: 18px; }
+
+    /* Card */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .card-header h2 { font-size: 14px; color: var(--accent-light); }
+
+    /* Toggles */
+    .toggle-row { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-row .label { font-size: 14px; }
+    .toggle-row .label small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+    .switch { position: relative; width: 50px; height: 26px; background: var(--surface2); border: 1px solid var(--border); border-radius: 26px; cursor: pointer; transition: 0.2s; flex-shrink: 0; }
+    .switch.on { background: var(--accent); border-color: var(--accent); }
+    .switch.green.on { background: var(--green); border-color: var(--green); }
+    .switch.pink.on  { background: var(--pink);  border-color: var(--pink); }
+    .switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: white; transition: 0.2s; }
+    .switch.on::after { left: 26px; }
+
+    /* Conversation list */
+    .conv-list { display: grid; gap: 10px; }
+    .conv-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .conv-item:hover { background: var(--border); transform: translateY(-1px); }
+    .conv-avatar {
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent-light);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 600;
+      flex-shrink: 0;
+    }
+    .conv-info { flex: 1; min-width: 0; }
+    .conv-phone { font-weight: 600; font-size: 14px; margin-bottom: 3px; }
+    .conv-preview { color: var(--text-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conv-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+    .badge { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .badge.yellow { background: rgba(250,204,21,0.15); color: var(--yellow); }
+    .badge.green { background: var(--green-dim); color: var(--green); }
+    .badge.red { background: var(--red-dim); color: var(--red); }
+    .empty { text-align: center; color: var(--text-muted); padding: 40px 20px; font-size: 13px; }
+
+    /* QR */
+    .qr-box { text-align: center; padding: 30px; }
+    .qr-box img { max-width: 280px; border-radius: var(--radius); background: white; padding: 12px; }
+    .qr-status { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 12px 0; font-size: 13px; }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+    .dot.green { background: var(--green); }
+    .dot.red { background: var(--red); }
+    .dot.yellow { background: var(--yellow); }
+
+    /* ─── CHAT MODAL (redesenhado) ─── */
+    .chat-modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .chat-modal.open { display: flex; }
+    .chat-box {
+      width: 100%;
+      max-width: 720px;
+      height: 85vh;
+      max-height: 800px;
+      background: var(--surface);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .chat-header {
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface);
+    }
+    .chat-header-info { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1; }
+    .chat-header-info .chat-avatar {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      background: var(--accent-dim);
+      color: var(--accent-light);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; flex-shrink: 0;
+    }
+    .chat-header-info h3 { font-size: 15px; margin-bottom: 2px; }
+    .chat-header-info .chat-sub { font-size: 12px; color: var(--text-muted); }
+    .chat-header-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 22px;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 6px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .msg { display: flex; flex-direction: column; max-width: 80%; }
+    .msg.in { align-self: flex-start; align-items: flex-start; }
+    .msg.out { align-self: flex-end; align-items: flex-end; }
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: 16px;
+      font-size: 13.5px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+    }
+    .msg.in .msg-bubble  {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 4px;
+    }
+    .msg.out .msg-bubble {
+      background: var(--accent);
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .msg-time { font-size: 10.5px; color: var(--text-muted); margin: 3px 6px 0; }
+
+    .msg-system {
+      align-self: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      background: var(--surface);
+      padding: 4px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    /* Responsivo */
+    @media (max-width: 600px) {
+      .container { padding: 16px; }
+      .bot-hero { padding: 30px 16px; }
+      .bot-switch-label { font-size: 22px; }
+      .chat-modal { padding: 12px; }
+      .chat-box { height: 92vh; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>Painel Studio Lucas Rocha</h1>
+        <p>Acesso operador</p>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="logout()">Sair</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="home" onclick="switchTab('home')">🏠 Início</div>
+      <div class="tab" data-tab="conversas" onclick="switchTab('conversas')">💬 Conversas</div>
+      <div class="tab" data-tab="controle" onclick="switchTab('controle')">⚙️ Controles</div>
+      <div class="tab" data-tab="whatsapp" onclick="switchTab('whatsapp')">📱 WhatsApp</div>
+    </div>
+
+    <!-- ─── HOME: BOTÃO GIGANTE LIGA/DESLIGA IA ─── -->
+    <div class="pane active" id="pane-home">
+      <div class="bot-hero">
+        <div class="bot-hero-content">
+          <h2>Status da Laís</h2>
+          <div class="bot-switch" onclick="toggleConfig('bot_active')">
+            <div id="bot-switch-track" class="bot-switch-track"></div>
+            <div id="bot-switch-label" class="bot-switch-label off">DESLIGADA</div>
+          </div>
+          <div id="bot-status-desc" class="bot-status-desc">Toque para ligar a IA</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── CONVERSAS ─── -->
+    <div class="pane" id="pane-conversas">
+      <div class="card">
+        <div class="card-header">
+          <h2>Conversas ativas</h2>
+          <button class="btn btn-outline btn-sm" onclick="loadConversations()">↻ Atualizar</button>
+        </div>
+        <div id="convList" class="conv-list"><div class="empty">Carregando...</div></div>
+      </div>
+    </div>
+
+    <!-- ─── CONTROLES ─── -->
+    <div class="pane" id="pane-controle">
+      <div class="card">
+        <h2 style="margin-bottom: 4px;">Funcionalidades automáticas</h2>
+        <div class="toggle-row">
+          <div class="label">
+            🤖 Bot ativo
+            <small>Quando desligado, a Laís não responde nenhum cliente</small>
+          </div>
+          <div class="switch" id="sw-bot_active" onclick="toggleConfig('bot_active')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="label">
+            ✅ Confirmações automáticas
+            <small>Envia mensagem de confirmação para os agendamentos do dia</small>
+          </div>
+          <div class="switch green" id="sw-confirmacao_automatica" onclick="toggleConfig('confirmacao_automatica')"></div>
+        </div>
+        <div class="toggle-row">
+          <div class="label">
+            🎂 Mensagens de aniversário
+            <small>Envia mensagem automaticamente para aniversariantes</small>
+          </div>
+          <div class="switch pink" id="sw-aniversario_ativo" onclick="toggleConfig('aniversario_ativo')"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── WHATSAPP ─── -->
+    <div class="pane" id="pane-whatsapp">
+      <div class="card">
+        <h2 style="margin-bottom: 16px;">Conexão WhatsApp</h2>
+        <div class="qr-status">
+          <span id="wppStatusDot" class="dot yellow"></span>
+          <span id="wppStatusText">Verificando...</span>
+        </div>
+        <div id="qrBox" class="qr-box">
+          <p style="color:var(--text-muted); margin-bottom:14px;">Clique para gerar o QR Code de conexão</p>
+          <button class="btn btn-primary" onclick="loadQR()">Gerar QR Code</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── CHAT MODAL ─── -->
+  <div class="chat-modal" id="chatModal">
+    <div class="chat-box">
+      <div class="chat-header">
+        <div class="chat-header-info">
+          <div id="chatAvatar" class="chat-avatar">?</div>
+          <div style="min-width:0;">
+            <h3 id="chatPhone">—</h3>
+            <div class="chat-sub" id="chatStage">novo</div>
+          </div>
+        </div>
+        <div class="chat-header-actions">
+          <button id="btnReturnBot" class="btn btn-sm" onclick="returnToBot()"
+            style="display:none;background:var(--green-dim);color:var(--green);border:1px solid rgba(74,222,128,0.3);">
+            🤖 Devolver à IA
+          </button>
+          <button id="btnSetHuman" class="btn btn-sm" onclick="setHumanMode()"
+            style="display:none;background:rgba(250,204,21,0.12);color:var(--yellow);border:1px solid rgba(250,204,21,0.3);">
+            ⏸ Pausar IA
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="closeChat()">✕</button>
+        </div>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+    </div>
+  </div>
+
+  <script>
+    let currentPhone = null;
+
+    async function api(url, opts = {}) {
+      const res = await fetch(url, {
+        method: opts.method || 'GET',
+        headers: { 'Content-Type': 'application/json' },
+        body: opts.body ? JSON.stringify(opts.body) : undefined,
+        credentials: 'include',
+      });
+      if (res.status === 401) { window.location.href = '/login'; return; }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Erro'); }
+      return res.json();
+    }
+
+    function escHtml(s) { return (s || '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+    function avatarInitials(phone) {
+      const n = phone.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+      if (n.length >= 4) return n.slice(-4);
+      return '#';
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+      document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+      if (name === 'conversas') loadConversations();
+      if (name === 'controle')  loadToggles();
+      if (name === 'home')      loadToggles();
+      if (name === 'whatsapp')  refreshWppStatus();
+    }
+
+    async function logout() {
+      await api('/api/auth/logout', { method: 'POST', body: {} });
+      window.location.href = '/login';
+    }
+
+    // ─── Toggles ──────────────────────────────────────────────────────────────
+    function updateBotHero(active) {
+      const track = document.getElementById('bot-switch-track');
+      const label = document.getElementById('bot-switch-label');
+      const desc  = document.getElementById('bot-status-desc');
+      track.classList.toggle('on', active);
+      label.textContent = active ? 'LIGADA' : 'DESLIGADA';
+      label.className = 'bot-switch-label ' + (active ? 'on' : 'off');
+      desc.textContent = active ? 'A Laís está respondendo os clientes' : 'Toque para ligar a IA';
+    }
+
+    async function loadToggles() {
+      try {
+        const data = await api('/api/operator-toggle/state');
+        for (const key of ['bot_active','confirmacao_automatica','aniversario_ativo']) {
+          const sw = document.getElementById('sw-' + key);
+          if (sw) sw.classList.toggle('on', !!data[key]);
+        }
+        updateBotHero(!!data.bot_active);
+      } catch (e) { console.error(e); }
+    }
+
+    async function toggleConfig(key) {
+      try {
+        const r = await api('/api/operator-toggle/' + key, { method: 'POST', body: {} });
+        const sw = document.getElementById('sw-' + key);
+        if (sw) sw.classList.toggle('on', r.active);
+        if (key === 'bot_active') updateBotHero(r.active);
+      } catch (e) { alert('Erro: ' + e.message); }
+    }
+
+    // ─── Conversas ────────────────────────────────────────────────────────────
+    async function loadConversations() {
+      const list = document.getElementById('convList');
+      list.innerHTML = '<div class="empty">Carregando...</div>';
+      try {
+        const data = await api('/api/conversations');
+        if (!data.length) { list.innerHTML = '<div class="empty">Nenhuma conversa ainda.</div>'; return; }
+        list.innerHTML = data.map(c => {
+          const phone = c.phone.replace('@s.whatsapp.net', '');
+          const stageClass = c.human_mode ? 'yellow' : 'green';
+          const stageLabel = c.human_mode ? 'IA pausada' : (c.stage || 'ativa');
+          const last = c.last_message ? escHtml(c.last_message.slice(0, 90)) : 'Sem mensagens recentes';
+          return `
+            <div class="conv-item" onclick="openChat('${escHtml(c.phone)}')">
+              <div class="conv-avatar">${avatarInitials(c.phone)}</div>
+              <div class="conv-info">
+                <div class="conv-phone">${phone}</div>
+                <div class="conv-preview">${last}</div>
+              </div>
+              <div class="conv-meta"><span class="badge ${stageClass}">${escHtml(stageLabel)}</span></div>
+            </div>`;
+        }).join('');
+      } catch (e) { list.innerHTML = '<div class="empty">Erro ao carregar.</div>'; }
+    }
+
+    async function openChat(phone) {
+      currentPhone = phone;
+      try {
+        const data = await api('/api/conversations/' + encodeURIComponent(phone));
+        document.getElementById('chatPhone').textContent = phone.replace('@s.whatsapp.net', '');
+        document.getElementById('chatAvatar').textContent = avatarInitials(phone);
+        document.getElementById('chatStage').textContent = data.human_mode ? '⏸ IA pausada' : (data.stage || 'ativa');
+
+        const humanBtn  = document.getElementById('btnSetHuman');
+        const returnBtn = document.getElementById('btnReturnBot');
+        if (data.human_mode) { humanBtn.style.display = 'none'; returnBtn.style.display = 'inline-flex'; }
+        else                 { humanBtn.style.display = 'inline-flex'; returnBtn.style.display = 'none'; }
+
+        const msgs = document.getElementById('chatMessages');
+        msgs.innerHTML = '';
+        const logs = data.logs || [];
+        if (logs.length === 0) { msgs.innerHTML = '<div class="empty">Nenhuma mensagem.</div>'; }
+        else {
+          [...logs].reverse().forEach(log => {
+            if (log.direction === 'system') {
+              const div = document.createElement('div');
+              div.className = 'msg-system';
+              div.textContent = log.content;
+              msgs.appendChild(div);
+              return;
+            }
+            const div = document.createElement('div');
+            div.className = 'msg ' + (log.direction === 'in' ? 'in' : 'out');
+            const t = log.created_at ? new Date(log.created_at * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+            div.innerHTML = `<div class="msg-bubble">${escHtml(log.content)}</div><div class="msg-time">${t}</div>`;
+            msgs.appendChild(div);
+          });
+          msgs.scrollTop = msgs.scrollHeight;
+        }
+        document.getElementById('chatModal').classList.add('open');
+      } catch (e) { alert('Erro: ' + e.message); }
+    }
+
+    function closeChat() {
+      document.getElementById('chatModal').classList.remove('open');
+      currentPhone = null;
+    }
+
+    async function setHumanMode() {
+      if (!currentPhone) return;
+      if (!confirm('Pausar a IA para esta conversa? Você passa a responder pelo WhatsApp.')) return;
+      await api('/api/conversations/' + encodeURIComponent(currentPhone) + '/human-mode', { method: 'POST', body: {} });
+      openChat(currentPhone);
+      loadConversations();
+    }
+
+    async function returnToBot() {
+      if (!currentPhone) return;
+      await api('/api/conversations/' + encodeURIComponent(currentPhone) + '/bot-mode', { method: 'POST', body: {} });
+      openChat(currentPhone);
+      loadConversations();
+    }
+
+    // ─── WhatsApp ────────────────────────────────────────────────────────────
+    async function refreshWppStatus() {
+      try {
+        const r = await api('/api/whatsapp/status');
+        const dot = document.getElementById('wppStatusDot');
+        const txt = document.getElementById('wppStatusText');
+        if (r.connected) { dot.className = 'dot green'; txt.textContent = 'Conectado'; }
+        else             { dot.className = 'dot red';   txt.textContent = 'Desconectado'; }
+      } catch { /* silencioso */ }
+    }
+
+    async function loadQR() {
+      const box = document.getElementById('qrBox');
+      box.innerHTML = '<p style="color:var(--text-muted)">Gerando QR Code...</p>';
+      try {
+        const r = await api('/api/qrcode');
+        if (r.base64) {
+          const src = r.base64.startsWith('data:') ? r.base64 : 'data:image/png;base64,' + r.base64;
+          box.innerHTML = `<img src="${src}" alt="QR Code" /><p style="color:var(--text-muted); margin-top:12px; font-size:12px;">Abra o WhatsApp no celular e escaneie o código</p>`;
+        } else if (r.connected) {
+          box.innerHTML = '<p style="color:var(--green);">✓ Já conectado!</p>';
+        } else {
+          box.innerHTML = '<p style="color:var(--red);">Não foi possível gerar o QR Code.</p>';
+        }
+        refreshWppStatus();
+      } catch (e) {
+        box.innerHTML = '<p style="color:var(--red);">Erro: ' + e.message + '</p>';
+      }
+    }
+
+    // Inicialização
+    loadToggles();
+    refreshWppStatus();
+    setInterval(refreshWppStatus, 15000);
+    setInterval(() => { if (document.getElementById('pane-conversas').classList.contains('active')) loadConversations(); }, 30000);
+  </script>
+</body>
+</html>

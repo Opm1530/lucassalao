@@ -68,8 +68,16 @@ app.get('/whatsapp-connect', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'whatsapp-connect.html'));
 });
 
-// Fallback to dashboard
+// Painel do operador (usuário não-admin)
+app.get('/operador', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'operador.html'));
+});
+
+// Fallback to dashboard — operador é redirecionado para seu painel
 app.get('*', (req, res) => {
+  if (req.session?.authenticated && req.session?.role === 'operator') {
+    return res.sendFile(path.join(__dirname, 'public', 'operador.html'));
+  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
