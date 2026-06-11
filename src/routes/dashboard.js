@@ -77,6 +77,17 @@ router.get('/status', async (req, res) => {
   }
 });
 
+router.get('/whatsapp/status', async (req, res) => {
+  try {
+    const state = await evolutionService.getConnectionState();
+    // Evolution: 'open' = conectado; 'connecting' / 'close' = desconectado
+    const connected = state.state === 'open';
+    res.json({ connected, state: state.state });
+  } catch (err) {
+    res.json({ connected: false, error: err.message });
+  }
+});
+
 router.get('/qrcode', async (req, res) => {
   try {
     const qr = await evolutionService.getQRCode();
