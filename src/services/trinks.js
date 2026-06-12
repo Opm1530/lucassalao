@@ -690,9 +690,8 @@ async function buildContext(phone, requestedDate = null) {
         profissionalId: prof.profissionalId,
         profissionalNome: prof.profissionalNome,
         data: prof.data,
-        // slots brutos (todos os blocos vagos — usar apenas para referência interna)
-        horariosDisponiveis: prof.horariosDisponiveis,
-        // slots válidos por serviço: use SEMPRE estes ao apresentar horários ao cliente
+        // NÃO incluímos mais horariosDisponiveis para evitar que a IA pegue
+        // horários quebrados por engano. Apenas os slots já filtrados por serviço.
         horariosValidosPorServico: slotsPorServico,
       };
     });

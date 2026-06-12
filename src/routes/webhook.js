@@ -453,9 +453,69 @@ async function processMessage(phone, text, isLatest = () => true) {
     return;
   }
 
+  // FILTRO ANTI-ESPERA — remove mensagens de espera que a IA insiste em mandar
+  // mesmo com a regra explícita no prompt. Bloqueio em código (último recurso).
+  const padroesEspera = [
+    /um\s+momento/i,
+    /aguarde/i,
+    /vou\s+verificar/i,
+    /vou\s+confirmar/i,
+    /vou\s+buscar/i,
+    /vou\s+(?:ver|checar|consultar)/i,
+    /j[áa]\s+te\s+(?:informo|aviso|retorno)/i,
+    /deixa?\s+eu\s+ver/i,
+    /agora\s*,?\s*vamos\s+verificar/i,
+    /s[óo]\s+um\s+(?:momento|minuto|segundo|instante)/i,
+  ];
+  let mensagensFiltradas = mensagens.filter(m => {
+    const texto = String(m).trim();
+    const ehEspera = padroesEspera.some(rx => rx.test(texto));
+    if (ehEspera) console.warn(`[Bot] Mensagem de espera bloqueada: "${texto}"`);
+    return !ehEspera;
+  });
+
+  // Se TODAS as mensagens foram bloqueadas, força a IA a responder de verdade
+  // Injeta uma nota corretiva e chama a OpenAI novamente até ela gerar algo útil
+  let tentativas = 0;
+  const MAX_TENTATIVAS_ANTI_ESPERA = 2;
+
+  while (mensagensFiltradas.length === 0 && tentativas < MAX_TENTATIVAS_ANTI_ESPERA) {
+    tentativas++;
+    console.warn(`[Bot] Todas as mensagens eram de espera (tentativa ${tentativas}). Forçando nova resposta...`);
+
+    const notaCorretiva = `SISTEMA: Sua última resposta continha apenas mensagens de espera ("um momento", "vou verificar", etc.) que são PROIBIDAS. Você já tem todos os dados de loja.disponibilidade e horariosValidosPorServico no contexto AGORA. Responda IMEDIATAMENTE com a informação real que a cliente pediu, sem usar nenhuma frase de espera. Apresente os horários disponíveis (apenas horas cheias :00) direto na mensagem.`;
+
+    conv.history.push({ role: 'user', content: notaCorretiva, ts: Date.now() });
+
+    try {
+      const novaResposta = await openaiService.chat(conv.history, context);
+      conv.history.push({ role: 'assistant', content: JSON.stringify(novaResposta), ts: Date.now() });
+      await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
+
+      const novasMsgs = novaResposta.mensagens || [];
+      mensagensFiltradas = novasMsgs.filter(m => {
+        const texto = String(m).trim();
+        const ehEspera = padroesEspera.some(rx => rx.test(texto));
+        if (ehEspera) console.warn(`[Bot] (Retry ${tentativas}) Mensagem de espera bloqueada: "${texto}"`);
+        return !ehEspera;
+      });
+    } catch (err) {
+      console.error(`[Bot] Erro no retry anti-espera:`, err.message);
+      break;
+    }
+  }
+
+  // Se mesmo após retries não saiu nada, manda uma resposta fallback genérica
+  if (mensagensFiltradas.length === 0) {
+    console.warn(`[Bot] Após ${tentativas} tentativas, ainda só temos mensagens de espera — enviando fallback`);
+    mensagensFiltradas = [
+      'Me dá um instante para olhar isso direitinho e já volto com a informação para você.',
+    ];
+  }
+
   // Prefixar TODA mensagem com "*_Atendente Laís disse:_*" (negrito + itálico no WhatsApp)
   // Remove qualquer duplicação caso a IA tenha tentado adicionar a assinatura
-  const mensagensComAssinatura = mensagens.map(m => {
+  const mensagensComAssinatura = mensagensFiltradas.map(m => {
     const limpa = String(m)
       .replace(/^\s*\*?_?\s*atendente\s+la[íi]s\s+disse\s*:?\s*_?\*?\s*/i, '')
       .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
