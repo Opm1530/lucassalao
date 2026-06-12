@@ -88,10 +88,13 @@ router.post('/evolution', async (req, res) => {
       return;
     }
 
-    // Recusar áudios
+    // Áudio: transcrever e seguir como texto
+    let finalTextOverride = null;
     if (isAudio) {
-      await evolutionService.sendText(phone, 'Olá! Por aqui realizamos atendimento apenas por mensagens escritas. Poderia digitar sua mensagem? 😊');
-      return;
+      const transcricao = await transcribeAudio(phone, messageData);
+      if (!transcricao) return; // já avisou a cliente no helper
+      console.log(`[Bot] Áudio transcrito (${phone}): "${transcricao}"`);
+      finalTextOverride = transcricao;
     }
 
     // Recusar imagens, stickers, documentos e vídeos
@@ -101,7 +104,7 @@ router.post('/evolution', async (req, res) => {
     }
 
     // Sem texto útil
-    let finalText = text;
+    let finalText = finalTextOverride || text;
     if (!finalText) return;
 
     // Buffer: aguarda mensagens quebradas antes de processar
@@ -446,11 +449,14 @@ async function processMessage(phone, text, isLatest = () => true) {
     return;
   }
 
-  // Prefixar TODA mensagem com "*Laís:*" (assinatura obrigatória)
-  // Remove duplicação caso a IA já tenha incluído por conta própria
+  // Prefixar TODA mensagem com "*_Atendente Laís disse:_*" (negrito + itálico no WhatsApp)
+  // Remove qualquer duplicação caso a IA tenha tentado adicionar a assinatura
   const mensagensComAssinatura = mensagens.map(m => {
-    const limpa = String(m).replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '').trim();
-    return `*Laís:* ${limpa}`;
+    const limpa = String(m)
+      .replace(/^\s*\*?_?\s*atendente\s+la[íi]s\s+disse\s*:?\s*_?\*?\s*/i, '')
+      .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
+      .trim();
+    return `*_Atendente Laís disse:_*\n${limpa}`;
   });
 
   try {

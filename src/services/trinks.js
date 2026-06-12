@@ -675,17 +675,16 @@ async function buildContext(phone, requestedDate = null) {
 
   // Para cada data e cada serviço, pré-calcular os slots válidos (consecutivos + fechamento)
   // Isso evita que o modelo liste horários que conflitam com outros agendamentos
+  // Também filtra horários quebrados (só horas cheias HH:00) — REGRA DE NEGÓCIO
   const disponibilidadeMapFiltrado = {};
   for (const [data, profSlots] of Object.entries(disponibilidadeMap)) {
     disponibilidadeMapFiltrado[data] = profSlots.map(prof => {
       const slotsPorServico = {};
       for (const servico of servicos) {
         const dur = servico.duracaoMinutos || 60;
-        slotsPorServico[servico.serviceId] = filtrarSlotsPorDuracao(
-          prof.horariosDisponiveis,
-          dur,
-          horarioFechamento
-        );
+        const validos = filtrarSlotsPorDuracao(prof.horariosDisponiveis, dur, horarioFechamento);
+        // FILTRO ADICIONAL: apenas horas cheias (08:00, 09:00, 10:00...)
+        slotsPorServico[servico.serviceId] = validos.filter(h => h.endsWith(':00'));
       }
       return {
         profissionalId: prof.profissionalId,
