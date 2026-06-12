@@ -46,7 +46,7 @@ function getClient() {
     throw new Error('Trinks API não configurada. Configure a chave e o estabelecimentoId no dashboard.');
   }
 
-  return axios.create({
+  const instance = axios.create({
     baseURL,
     headers: {
       'X-Api-Key': apiKey,
@@ -54,8 +54,29 @@ function getClient() {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
-    timeout: 15000,
+    timeout: 30000, // 30s (com retry de 60s entre tentativas)
   });
+
+  // Interceptor: retry automático em 429 (rate limit) — até 3 tentativas
+  // Espera 60s entre tentativas (Trinks normalmente libera nesse intervalo)
+  instance.interceptors.response.use(undefined, async (err) => {
+    const config = err.config || {};
+    if (err.response?.status !== 429) throw err;
+
+    config._retryCount = config._retryCount || 0;
+    if (config._retryCount >= 3) {
+      console.error(`[Trinks] 429 após 3 tentativas — desistindo. URL: ${config.url}`);
+      throw err;
+    }
+
+    config._retryCount++;
+    const espera = 60000; // 60 segundos
+    console.warn(`[Trinks] 429 Too Many Requests em ${config.url} — aguardando ${espera/1000}s antes de tentar novamente (${config._retryCount}/3)`);
+    await new Promise(r => setTimeout(r, espera));
+    return instance.request(config);
+  });
+
+  return instance;
 }
 
 // Helper to ensure we always have an array from Trinks API response
