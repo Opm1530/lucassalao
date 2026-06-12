@@ -304,8 +304,29 @@ async function processMessage(phone, text, isLatest = () => true) {
             valor: item.preco,
             observacoes: cliente?.observacao || null,
           });
-          console.log(`[Bot] Agendamento criado: id=${result.id} | ${item.servico} ${item.data} ${item.horario}`);
-          resultados.push({ item, ok: true });
+
+          // VERIFICAÇÃO PÓS-CRIAÇÃO — confirma que o agendamento existe de fato no Trinks
+          if (!result?.id) {
+            console.error(`[Bot] Trinks não retornou ID — agendamento NÃO confirmado: ${item.servico} ${item.data} ${item.horario}`);
+            resultados.push({ item, ok: false, erro: 'sem ID de retorno' });
+            continue;
+          }
+
+          // Confirma que o slot agora está ocupado (proof of life do agendamento)
+          const reCheck = await trinksService.verificarSlotLivre({
+            profissionalId,
+            dataHora: dataHoraISO,
+            duracao: duracaoNum,
+          });
+          if (reCheck.livre) {
+            console.warn(`[Bot] Agendamento id=${result.id} retornou ID mas o slot ${item.horario} ainda está livre no Trinks — possível falha silenciosa`);
+            // Não considera sucesso — registra falha para a cliente saber
+            resultados.push({ item, ok: false, erro: 'criação não confirmada pelo Trinks', isFalhaSilenciosa: true });
+            continue;
+          }
+
+          console.log(`[Bot] Agendamento criado e verificado: id=${result.id} | ${item.servico} ${item.data} ${item.horario}`);
+          resultados.push({ item, ok: true, agendamentoId: result.id });
         } catch (err) {
           console.error(`[Bot] Erro ao criar agendamento (${item.servico}):`, err.message);
           resultados.push({ item, ok: false, erro: err.message, isConflito: err.isConflito });
@@ -348,7 +369,7 @@ async function processMessage(phone, text, isLatest = () => true) {
         if (conflito) {
           // Em vez de mensagem fixa, injeta no histórico e pede para a IA gerar
           // a resposta contextual (mais natural dentro da conversa)
-          const nota = `SISTEMA: O horário ${conflito.item.horario} do dia ${conflito.item.data} para o serviço "${conflito.item.servico}" foi reservado por outra cliente no exato momento em que tentamos registrar. O agendamento NÃO foi criado. Avise a cliente de forma natural e empática que esse horário acabou de ser pego por outra pessoa, peça que ela escolha outro horário, e mostre os horários disponíveis atualizados (consulte loja.disponibilidade novamente — está atualizada).`;
+          const nota = `SISTEMA: O horário ${conflito.item.horario} do dia ${conflito.item.data} para o serviço "${conflito.item.servico}" foi reservado por outra cliente no exato momento em que tentamos registrar. O agendamento NÃO foi criado. Avise a cliente de forma natural e empática, explicando que por se tratar de um atendimento automático, pode acontecer de outra cliente estar conversando ao mesmo tempo e acabar reservando o horário antes. Peça desculpa pelo inconveniente, peça que ela escolha outro horário, e mostre os horários disponíveis atualizados (consulte loja.disponibilidade novamente — está atualizada).`;
           conv.history.push({ role: 'user', content: nota, ts: Date.now() });
 
           // Reconsulta contexto (sem cache — vai trazer o slot atualizado)
@@ -371,8 +392,9 @@ async function processMessage(phone, text, isLatest = () => true) {
             mensagens.push(`Ops, o horário das ${conflito.item.horario} acabou de ser reservado por outra pessoa. 😕 Pode me dizer outro horário?`);
           }
         } else {
-          mensagens.push('Tive um problema ao tentar registrar seu horário. 😔');
-          mensagens.push('Pode tentar novamente ou, se preferir, fala com a gente diretamente que a gente resolve!');
+          // Falha silenciosa ou erro genérico — sempre avisar que o agendamento NÃO foi confirmado
+          mensagens.push('Não consegui confirmar o seu agendamento agora. 😔');
+          mensagens.push('Vou pedir para o salão entrar em contato direto com você para garantir o horário, tudo bem?');
         }
       }
     }
@@ -424,9 +446,16 @@ async function processMessage(phone, text, isLatest = () => true) {
     return;
   }
 
+  // Prefixar TODA mensagem com "*Laís:*" (assinatura obrigatória)
+  // Remove duplicação caso a IA já tenha incluído por conta própria
+  const mensagensComAssinatura = mensagens.map(m => {
+    const limpa = String(m).replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '').trim();
+    return `*Laís:* ${limpa}`;
+  });
+
   try {
-    await evolutionService.sendMessages(phone, mensagens);
-    for (const msg of mensagens) await db.addLog(phone, 'out', msg);
+    await evolutionService.sendMessages(phone, mensagensComAssinatura);
+    for (const msg of mensagensComAssinatura) await db.addLog(phone, 'out', msg);
   } catch (err) {
     console.error('[Bot] Erro ao enviar mensagens:', err.message);
   }
