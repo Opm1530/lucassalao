@@ -123,14 +123,18 @@ router.post('/evolution', async (req, res) => {
 // ─── Transcrição de áudio ─────────────────────────────────────────────────────
 async function transcribeAudio(phone, messageData) {
   console.log(`[Bot] Transcrevendo áudio de ${phone}...`);
+  console.log(`[Bot] messageData keys:`, messageData ? Object.keys(messageData).join(',') : 'null');
   try {
     const media = await evolutionService.downloadMedia(messageData);
-    if (!media?.base64) throw new Error('Base64 vazio');
+    console.log(`[Bot] Media baixada — base64 length: ${media?.base64?.length || 0}, mimetype: ${media?.mimetype}`);
+    if (!media?.base64) throw new Error('Base64 vazio retornado pelo Evolution');
     const text = await whisperService.transcribe(media.base64, media.mimetype || 'audio/ogg');
-    console.log(`[Bot] Transcrição: "${text}"`);
+    console.log(`[Bot] Transcrição OK: "${text}"`);
     return text;
   } catch (err) {
     console.error('[Bot] Erro ao transcrever áudio:', err.message);
+    console.error('[Bot] Stack:', err.stack);
+    if (err.response?.data) console.error('[Bot] Response:', JSON.stringify(err.response.data).slice(0, 500));
     try {
       await evolutionService.sendText(phone, 'Não consegui entender o áudio. Pode digitar sua mensagem?');
     } catch {}

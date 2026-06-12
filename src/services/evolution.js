@@ -57,11 +57,26 @@ async function markAsRead(remoteJid, messageId) {
 async function downloadMedia(message) {
   const client = getClient();
   const instance = getInstance();
-  const { data } = await client.post(`/message/getBase64FromMediaMessage/${instance}`, {
-    message,
-    convertToMp4: false,
-  });
-  return { base64: data.base64, mimetype: data.mimetype };
+
+  // Evolution API mudou o path entre versões — tenta os dois
+  const paths = [
+    `/chat/getBase64FromMediaMessage/${instance}`,
+    `/message/getBase64FromMediaMessage/${instance}`,
+  ];
+
+  let lastErr;
+  for (const p of paths) {
+    try {
+      const { data } = await client.post(p, { message, convertToMp4: false });
+      if (data?.base64) {
+        return { base64: data.base64, mimetype: data.mimetype };
+      }
+    } catch (err) {
+      lastErr = err;
+      if (err.response?.status !== 404) throw err; // só tenta o próximo se for 404
+    }
+  }
+  throw lastErr || new Error('Nenhum endpoint de download retornou base64');
 }
 
 async function sendMessages(to, messages) {
