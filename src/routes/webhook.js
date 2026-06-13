@@ -477,7 +477,7 @@ async function processMessage(phone, text, isLatest = () => true) {
   // Se TODAS as mensagens foram bloqueadas, força a IA a responder de verdade
   // Injeta uma nota corretiva e chama a OpenAI novamente até ela gerar algo útil
   let tentativas = 0;
-  const MAX_TENTATIVAS_ANTI_ESPERA = 2;
+  const MAX_TENTATIVAS_ANTI_ESPERA = 1;
 
   while (mensagensFiltradas.length === 0 && tentativas < MAX_TENTATIVAS_ANTI_ESPERA) {
     tentativas++;

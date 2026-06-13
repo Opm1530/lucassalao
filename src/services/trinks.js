@@ -521,19 +521,34 @@ async function listarAgendamentosPorData(data) {
     });
     const items = ensureArray(resp);
 
-    // Mapear agendamentos básicos
-    const agendamentos = items.map(a => ({
-      id: a.id,
-      servico: a.servico?.nome ?? a.servicoNome ?? '',
-      profissional: a.profissional?.nome ?? a.profissionalNome ?? '',
-      data: a.dataHoraInicio ? a.dataHoraInicio.split('T')[0] : '',
-      horario: a.dataHoraInicio ? a.dataHoraInicio.split('T')[1]?.substring(0, 5) : '',
-      duracao: a.duracaoEmMinutos ?? 0,
-      status: a.status ?? 'aguardando',
-      clienteId: a.cliente?.id ?? a.clienteId ?? null,
-      clienteNome: a.cliente?.nome ?? a.clienteNome ?? null,
-      clienteWhatsApp: a.cliente?.whatsapp ?? a.cliente?.telefone ?? a.clienteWhatsApp ?? null,
-    }));
+    // Status que indicam agendamento NÃO ativo — não devem receber confirmação
+    const STATUS_INATIVO = new Set([
+      'cancelado', 'cancelled', 'canceled',
+      'faltou', 'faltou_automatico', 'no_show',
+      'finalizado', 'concluido', 'concluído',
+    ]);
+
+    // Mapear agendamentos básicos — filtra quem já não é mais ativo
+    const agendamentos = items
+      .map(a => ({
+        id: a.id,
+        servico: a.servico?.nome ?? a.servicoNome ?? '',
+        profissional: a.profissional?.nome ?? a.profissionalNome ?? '',
+        data: a.dataHoraInicio ? a.dataHoraInicio.split('T')[0] : '',
+        horario: a.dataHoraInicio ? a.dataHoraInicio.split('T')[1]?.substring(0, 5) : '',
+        duracao: a.duracaoEmMinutos ?? 0,
+        status: (a.status?.nome ?? a.statusNome ?? a.status ?? 'aguardando').toString().toLowerCase(),
+        clienteId: a.cliente?.id ?? a.clienteId ?? null,
+        clienteNome: a.cliente?.nome ?? a.clienteNome ?? null,
+        clienteWhatsApp: a.cliente?.whatsapp ?? a.cliente?.telefone ?? a.clienteWhatsApp ?? null,
+      }))
+      .filter(a => {
+        if (STATUS_INATIVO.has(a.status)) {
+          console.log(`[Trinks] Pulando ag id=${a.id} (status=${a.status}) — não receberá confirmação`);
+          return false;
+        }
+        return true;
+      });
 
     // Buscar WhatsApp dos clientes que não vieram com o campo preenchido
     const semWpp = agendamentos.filter(a => !a.clienteWhatsApp && a.clienteId);

@@ -21,10 +21,10 @@ const pool = new Pool({
 // ─── In-memory config cache (for sync reads) ──────────────────────────────────
 
 const DEFAULTS = {
-  openai_model: 'gpt-4o',
+  openai_model: 'gpt-4o-mini',
   bot_active: 'true',
   trinks_base_url: 'https://api.trinks.com',
-  max_history: '20',
+  max_history: '12',
 };
 
 let configCache = { ...DEFAULTS };

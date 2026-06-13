@@ -10,7 +10,7 @@ function getClient() {
 
 async function chat(history, context) {
   const client = getClient();
-  const model = db.getConfig('openai_model') || 'gpt-4o';
+  const model = db.getConfig('openai_model') || 'gpt-4o-mini';
 
   // Use prompt saved in DB (editable via dashboard), fallback to hardcoded default
   const systemPrompt = db.getConfig('system_prompt') || SYSTEM_PROMPT;
@@ -78,6 +78,19 @@ async function chat(history, context) {
         temperature: 0.3,
         max_tokens: 1500,
       });
+
+      // Log de uso de tokens — útil para auditar custos
+      const usage = response.usage || {};
+      const inputT = usage.prompt_tokens || 0;
+      const outputT = usage.completion_tokens || 0;
+      // Custo aproximado em USD
+      // gpt-4o:      $2.50/1M in, $10.00/1M out
+      // gpt-4o-mini: $0.15/1M in, $0.60/1M out
+      const isMini = model.includes('mini');
+      const inPrice = isMini ? 0.15 : 2.5;
+      const outPrice = isMini ? 0.60 : 10;
+      const custoUSD = (inputT * inPrice / 1_000_000) + (outputT * outPrice / 1_000_000);
+      console.log(`[OpenAI] model=${model} | in=${inputT} out=${outputT} tokens | ~$${custoUSD.toFixed(4)}`);
 
       const raw = response.choices[0].message.content;
       try {
