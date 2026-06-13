@@ -12,6 +12,40 @@ const db = require('../db/database');
 const trinksService = require('./trinks');
 const evolutionService = require('./evolution');
 
+/**
+ * Normaliza um número para o JID do WhatsApp: 55<DDD><numero>@s.whatsapp.net
+ * Aceita variações como:
+ *   - "11999998888"           → "5511999998888@s.whatsapp.net"
+ *   - "1199999-8888"          → "5511999998888@s.whatsapp.net"
+ *   - "+55 (11) 99999-8888"   → "5511999998888@s.whatsapp.net"
+ *   - "5511999998888"         → "5511999998888@s.whatsapp.net"
+ *   - já formatado JID        → retorna como está
+ */
+function normalizarPhoneJid(raw) {
+  if (!raw) return null;
+  if (String(raw).includes('@')) return raw; // já é JID
+
+  let phone = String(raw).replace(/\D/g, '');
+
+  // Se começa com 0 (chamada nacional antiga), remove
+  if (phone.startsWith('0')) phone = phone.replace(/^0+/, '');
+
+  // Se não tem 55 (DDI Brasil), adiciona
+  if (!phone.startsWith('55')) {
+    phone = '55' + phone;
+  } else if (phone.length < 12) {
+    // Começa com 55 mas é curto (provavelmente 55 é parte do DDD invertido)
+    phone = '55' + phone.substring(2);
+  }
+
+  // Garantia mínima: 12 dígitos (55 + 2 DDD + 8 número) ou 13 (com 9 do celular)
+  if (phone.length < 12 || phone.length > 13) {
+    console.warn(`[Confirmação] Número com tamanho suspeito: ${raw} → ${phone}`);
+  }
+
+  return `${phone}@s.whatsapp.net`;
+}
+
 const MENSAGEM_CONFIRMACAO = (nome, servico, data, horario) => {
   const [ano, mes, dia] = data.split('-');
   const dataFormatada = `${dia}/${mes}/${ano}`;
@@ -95,8 +129,11 @@ async function verificarEDisparar() {
 
       // ── Disparar confirmação ──────────────────────────────────────────
       if (!jaEnviou && deveDisparar(ag.data, ag.horario, agora)) {
-        const phone = String(ag.clienteWhatsApp).replace(/\D/g, '');
-        const phoneJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+        const phoneJid = normalizarPhoneJid(ag.clienteWhatsApp);
+        if (!phoneJid) {
+          console.warn(`[Confirmação] Pulando ${ag.clienteNome} — número inválido: ${ag.clienteWhatsApp}`);
+          continue;
+        }
         const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 
         try {
@@ -119,9 +156,8 @@ async function verificarEDisparar() {
 
       // ── Marcar como faltou se prazo expirou sem confirmação (todos os horários) ──
       if (jaEnviou && prazoExpirou(ag.data, ag.horario, agora)) {
-        const disparo = await db.getDisparoByPhone(
-          (ag.clienteWhatsApp.replace(/\D/g, '') + '@s.whatsapp.net')
-        );
+        const phoneJidVerif = normalizarPhoneJid(ag.clienteWhatsApp);
+        const disparo = phoneJidVerif ? await db.getDisparoByPhone(phoneJidVerif) : null;
         if (disparo && disparo.status === 'enviado') {
           try {
             await trinksService.marcarFaltou(ag.id);
@@ -180,8 +216,11 @@ async function dispararConfirmacoes(dataAgendamento, ids = null) {
       continue;
     }
 
-    const phone = String(ag.clienteWhatsApp).replace(/\D/g, '');
-    const phoneJid = phone.includes('@') ? phone : `${phone}@s.whatsapp.net`;
+    const phoneJid = normalizarPhoneJid(ag.clienteWhatsApp);
+    if (!phoneJid) {
+      resultados.push({ id: ag.id, status: 'sem_whatsapp', clienteNome: ag.clienteNome });
+      continue;
+    }
     const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 
     try {
