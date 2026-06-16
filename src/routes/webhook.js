@@ -317,7 +317,31 @@ async function processMessage(phone, text, isLatest = () => true) {
 
     if (temHorarioInvalido) {
       console.warn(`[Bot] HORÁRIOS INVÁLIDOS detectados na resposta: ${horariosInvalidos.join(', ')}. Forçando retry.`);
-      const nota = `SISTEMA: Sua última resposta ofereceu os horários ${horariosInvalidos.join(', ')} que NÃO ESTÃO em horariosValidosPorServico. Isso é ALUCINAÇÃO — você inventou horários que não existem. Reveja loja.disponibilidade e loja.diasIndisponiveis. Se NÃO houver horários válidos para a data pedida, diga que a agenda está PREENCHIDA nesse dia (NUNCA "fechada"). NUNCA invente horários que não estão no contexto.`;
+
+      // Resumo dos slots realmente disponíveis (todas as datas, por serviço)
+      const resumoSlots = [];
+      for (const [data, profSlots] of Object.entries(dispMap)) {
+        for (const prof of profSlots) {
+          for (const [servId, slots] of Object.entries(prof.horariosValidosPorServico || {})) {
+            if (slots.length === 0) continue;
+            const srv = (context.servicos || []).find(s => String(s.serviceId) === String(servId));
+            const nomeServ = srv?.serviceName || `servico ${servId}`;
+            resumoSlots.push(`${data} ${prof.profissionalNome} ${nomeServ}: ${slots.join(', ')}`);
+          }
+        }
+      }
+      const resumo = resumoSlots.length > 0
+        ? `Horários REAIS disponíveis no contexto:\n${resumoSlots.join('\n')}`
+        : 'Nenhum horário disponível em nenhuma data consultada — pode dizer que está preenchido.';
+
+      const nota = `SISTEMA: Sua última resposta ofereceu os horários ${horariosInvalidos.join(', ')} que NÃO ESTÃO em horariosValidosPorServico. Isso foi alucinação.
+
+${resumo}
+
+INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
+1. Se HÁ horários reais disponíveis acima → OFEREÇA EXATAMENTE esses horários para a cliente. Não diga "preenchida" se existem horários listados.
+2. Se NÃO HÁ nenhum horário → diga que a agenda está preenchida nesse dia (nunca "fechada") e ofereça outra data.
+3. NUNCA invente horários fora da lista acima.`;
       conv.history.push({ role: 'user', content: nota, ts: Date.now() });
       try {
         const respCorrigida = await openaiService.chat(conv.history, context);
