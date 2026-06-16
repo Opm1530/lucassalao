@@ -315,6 +315,49 @@ async function processMessage(phone, text, isLatest = () => true) {
       }
     }
 
+    // ── VALIDAÇÃO REVERSA — IA diz "sem vagas" quando na verdade TEM ───────
+    // Pega texto bruto da resposta
+    const textoCompleto = (aiResponse.mensagens || []).join(' ').toLowerCase();
+    const dizSemVagas = /preench(ido|ida)|sem hor[áa]rio|n[ãa]o (?:temos?|h[áa]) (?:hor[áa]rio|vagas?|disponibilidade)|indispon[íi]vel|n[ãa]o (?:temos?|h[áa]) vagas?/i.test(textoCompleto);
+
+    if (dizSemVagas && slotsValidosGlobal.size > 0 && !temHorarioInvalido) {
+      console.warn(`[Bot] IA disse "sem vagas" mas existem ${slotsValidosGlobal.size} slots no contexto. Forçando retry.`);
+
+      // Resumo dos slots realmente disponíveis (todas as datas, por serviço)
+      const resumoSlots = [];
+      for (const [data, profSlots] of Object.entries(dispMap)) {
+        for (const prof of profSlots) {
+          for (const [servId, slots] of Object.entries(prof.horariosValidosPorServico || {})) {
+            if (slots.length === 0) continue;
+            const srv = (context.servicos || []).find(s => String(s.serviceId) === String(servId));
+            const nomeServ = srv?.serviceName || `servico ${servId}`;
+            resumoSlots.push(`${data} ${prof.profissionalNome} ${nomeServ}: ${slots.join(', ')}`);
+          }
+        }
+      }
+
+      const nota = `SISTEMA: Sua última resposta afirmou que não há horários disponíveis. ISSO É FALSO.
+
+Horários REAIS disponíveis no contexto AGORA:
+${resumoSlots.join('\n')}
+
+INSTRUÇÕES OBRIGATÓRIAS:
+1. Identifique a data que a cliente pediu (hoje, amanhã, quinta etc).
+2. Procure essa data na lista acima e ofereça os horários listados para o serviço escolhido (ou para "Corte" se ainda não foi definido).
+3. Se a data específica pedida não tem horários, mas OUTRAS datas têm → diga isso e ofereça as datas alternativas com slots disponíveis.
+4. JAMAIS diga "preenchida" quando há slots listados acima para alguma data.`;
+
+      conv.history.push({ role: 'user', content: nota, ts: Date.now() });
+      try {
+        const respCorrigida = await openaiService.chat(conv.history, context);
+        conv.history.push({ role: 'assistant', content: JSON.stringify(respCorrigida), ts: Date.now() });
+        aiResponse = respCorrigida;
+        console.log(`[Bot] Resposta corrigida após "sem vagas" falso: acao=${aiResponse?.acao}`);
+      } catch (err) {
+        console.error(`[Bot] Falha ao corrigir "sem vagas" falso:`, err.message);
+      }
+    }
+
     if (temHorarioInvalido) {
       console.warn(`[Bot] HORÁRIOS INVÁLIDOS detectados na resposta: ${horariosInvalidos.join(', ')}. Forçando retry.`);
 
