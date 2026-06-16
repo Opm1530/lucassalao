@@ -591,14 +591,40 @@
             <div class="form-group">
               <label>Modelo</label>
               <select id="openai_model">
-                <option value="gpt-4o">gpt-4o (recomendado)</option>
-                <option value="gpt-4o-mini">gpt-4o-mini (mais rápido)</option>
+                <option value="gpt-4o-mini">gpt-4o-mini (recomendado, mais barato)</option>
+                <option value="gpt-4o">gpt-4o (mais caro)</option>
                 <option value="gpt-4-turbo">gpt-4-turbo</option>
               </select>
             </div>
             <div class="form-group">
               <label>Máx. histórico de mensagens</label>
-              <input type="number" id="max_history" placeholder="20" min="5" max="50" />
+              <input type="number" id="max_history" placeholder="12" min="5" max="50" />
+            </div>
+            <div class="form-group full">
+              <label>Limite diário de tokens <span style="color:var(--text-muted);font-weight:400">(0 = sem limite)</span></label>
+              <input type="number" id="openai_daily_token_limit" placeholder="2000000" min="0" step="100000" />
+              <div id="tokenUsageInfo" style="font-size:12px;color:var(--text-muted);margin-top:6px;">Carregando uso atual...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modo Teste -->
+        <div class="card" style="border-color:var(--yellow);">
+          <div class="card-title" style="color:var(--yellow);">🧪 Modo Teste</div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Quando ativo, a IA <strong>só responde ao número configurado</strong> abaixo.
+            Todas as outras mensagens são ignoradas. Use para testar mudanças sem afetar clientes.
+          </p>
+          <div class="form-grid">
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+                <input type="checkbox" id="test_mode_active_chk" style="width:18px;height:18px;cursor:pointer;" />
+                Ativar modo teste
+              </label>
+            </div>
+            <div class="form-group">
+              <label>Número de teste (com 55 + DDD)</label>
+              <input type="text" id="test_mode_phone" placeholder="5561999999999" />
             </div>
           </div>
         </div>
@@ -852,7 +878,7 @@
     const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
-                    'whatsapp_outros_servicos'];
+                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone'];
     for (const f of fields) {
       const el = document.getElementById(f);
       if (el && data[f]) el.value = data[f];
@@ -860,22 +886,45 @@
     document.getElementById('botToggle').checked = data.bot_active === 'true';
     document.getElementById('confirmacaoToggle').checked = data.confirmacao_automatica === 'true';
     document.getElementById('aniversarioToggle').checked = data.aniversario_ativo === 'true';
+    const chk = document.getElementById('test_mode_active_chk');
+    if (chk) chk.checked = data.test_mode_active === 'true';
     applyIdentity(data);
+    loadTokenUsage();
   }
 
   async function saveConfig() {
     const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
-                    'whatsapp_outros_servicos'];
+                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone'];
     const body = {};
     for (const f of fields) {
       const el = document.getElementById(f);
       if (el && el.value.trim()) body[f] = el.value.trim();
     }
+    // Checkbox do modo teste
+    const chk = document.getElementById('test_mode_active_chk');
+    if (chk) body.test_mode_active = chk.checked ? 'true' : 'false';
+
     const r = await api('/api/config', { method: 'POST', body });
     if (r.success) applyIdentity(body);
     showAlert('configAlert', r.success ? 'Configurações salvas com sucesso!' : 'Erro ao salvar.', r.success);
+  }
+
+  async function loadTokenUsage() {
+    const info = document.getElementById('tokenUsageInfo');
+    if (!info) return;
+    try {
+      const u = await api('/api/openai/usage');
+      const pct = u.percentual.toFixed(1);
+      const cor = u.bloqueado ? 'var(--red)' : (u.percentual > 80 ? 'var(--yellow)' : 'var(--text-muted)');
+      info.style.color = cor;
+      info.innerHTML = u.limite > 0
+        ? `Hoje: <strong>${u.total.toLocaleString('pt-BR')}</strong> / ${u.limite.toLocaleString('pt-BR')} tokens (${pct}%) · ${u.requests} chamadas · ~$${u.custo_usd.toFixed(2)}${u.bloqueado ? ' · 🚫 BLOQUEADO' : ''}`
+        : `Hoje: <strong>${u.total.toLocaleString('pt-BR')}</strong> tokens · ${u.requests} chamadas · ~$${u.custo_usd.toFixed(2)} (sem limite definido)`;
+    } catch {
+      info.textContent = 'Não foi possível carregar o uso atual.';
+    }
   }
 
   async function testTrinks() {
