@@ -364,12 +364,62 @@ async function listarDisponibilidade(data) {
     });
 
     const items = ensureArray(resp);
-    return items.map(prof => ({
-      profissionalId: prof.id,
-      profissionalNome: prof.nome,
-      horariosDisponiveis: prof.horariosVagos ?? [],
-      data,
-    }));
+    console.log(`[Trinks] Disponibilidade ${data}:`, JSON.stringify(items.map(p => ({
+      nome: p.nome,
+      vagos: p.horariosVagos?.length || 0,
+      keys: Object.keys(p),
+    }))));
+
+    // Buscar ausências do dia e descontar dos horários vagos
+    let ausencias = [];
+    try {
+      const { data: ausRes } = await client.get('/v1/ausencias', {
+        params: { dataInicio: `${data}T00:00:00`, dataFim: `${data}T23:59:59`, pageSize: 100 },
+      });
+      ausencias = ensureArray(ausRes);
+      if (ausencias.length > 0) {
+        console.log(`[Trinks] Ausências em ${data}: ${ausencias.length} encontradas`);
+      }
+    } catch (err) {
+      console.warn(`[Trinks] Falha ao buscar ausências (${data}):`, err.response?.status, err.message);
+    }
+
+    return items.map(prof => {
+      let vagos = prof.horariosVagos ?? [];
+
+      // Descontar blocos de ausência desse profissional
+      const profAusencias = ausencias.filter(a =>
+        String(a.profissionalId ?? a.profissional?.id) === String(prof.id)
+      );
+
+      for (const aus of profAusencias) {
+        const inicio = aus.dataHoraInicio ?? aus.inicio;
+        const fim    = aus.dataHoraFim ?? aus.fim;
+        if (!inicio || !fim) continue;
+        const ini = inicio.split('T')[1]?.substring(0, 5);
+        const fimH = fim.split('T')[1]?.substring(0, 5);
+        if (!ini || !fimH) continue;
+
+        const [ih, im] = ini.split(':').map(Number);
+        const [fh, fm] = fimH.split(':').map(Number);
+        const iniMin = ih * 60 + im;
+        const fimMin = fh * 60 + fm;
+
+        vagos = vagos.filter(h => {
+          const [hh, mm] = h.split(':').map(Number);
+          const t = hh * 60 + mm;
+          return t < iniMin || t >= fimMin; // remove se cair no intervalo de ausência
+        });
+        console.log(`[Trinks] Descontada ausência ${ini}-${fimH} de ${prof.nome}`);
+      }
+
+      return {
+        profissionalId: prof.id,
+        profissionalNome: prof.nome,
+        horariosDisponiveis: vagos,
+        data,
+      };
+    });
   } catch (err) {
     console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
