@@ -39,6 +39,8 @@ router.post('/config', (req, res) => {
     'whatsapp_outros_servicos',
     'horario_fechamento',
     'openai_daily_token_limit',
+    'test_mode_active',
+    'test_mode_phone',
   ];
 
   const toSave = {};
@@ -141,6 +143,24 @@ router.post('/webhook/set', async (req, res) => {
 });
 
 // ─── Bot control ─────────────────────────────────────────────────────────────
+
+// Modo teste — toggle e configuração de número
+router.get('/test-mode', (req, res) => {
+  res.json({
+    active: db.getConfig('test_mode_active') === 'true',
+    phone: db.getConfig('test_mode_phone') || '',
+  });
+});
+
+router.post('/test-mode', (req, res) => {
+  const { active, phone } = req.body || {};
+  if (typeof active === 'boolean') db.setConfig('test_mode_active', String(active));
+  if (typeof phone === 'string')   db.setConfig('test_mode_phone', phone.replace(/\D/g, ''));
+  res.json({
+    active: db.getConfig('test_mode_active') === 'true',
+    phone: db.getConfig('test_mode_phone') || '',
+  });
+});
 
 // Uso de tokens da OpenAI no dia atual + limite configurado
 router.get('/openai/usage', async (req, res) => {

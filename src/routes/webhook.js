@@ -75,6 +75,20 @@ router.post('/evolution', async (req, res) => {
 
     const { phone, text, isAudio, isUnsupportedMedia, messageData, messageId } = parsed;
 
+    // MODO TESTE: quando ativo, IA só responde ao número configurado
+    // Útil pra testar mudanças sem afetar clientes em produção
+    if (db.getConfig('test_mode_active') === 'true') {
+      const testPhone = (db.getConfig('test_mode_phone') || '').replace(/\D/g, '');
+      const currentPhone = phone.replace('@s.whatsapp.net', '').replace(/\D/g, '');
+      // Aceita match parcial (com ou sem 55, etc) — basta um conter o outro
+      const match = testPhone && (currentPhone.endsWith(testPhone) || testPhone.endsWith(currentPhone));
+      if (!match) {
+        console.log(`[Bot] MODO TESTE ativo — ignorando ${currentPhone} (só responde a ${testPhone})`);
+        return;
+      }
+      console.log(`[Bot] MODO TESTE — processando mensagem de teste de ${currentPhone}`);
+    }
+
     // Deduplicar
     if (processedMessages.has(messageId)) return;
     processedMessages.add(messageId);
