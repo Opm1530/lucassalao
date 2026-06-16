@@ -192,6 +192,11 @@ async function listarProfissionais() {
 // ─── Clientes ──────────────────────────────────────────────────────────────────
 
 async function buscarClientePorTelefone(telefone) {
+  // Cache curto (2 min) — evita 429 em conversa rápida com mesmo cliente
+  const cacheKey = `cliente_tel_${telefone}`;
+  const cached = fromCache(cacheKey, 2 * 60 * 1000);
+  if (cached !== null) return cached.found || null;
+
   const clean = telefone.replace('@s.whatsapp.net', '').replace(/^55/, '');
   
   const baseVariations = [clean];
@@ -224,6 +229,7 @@ async function buscarClientePorTelefone(telefone) {
       const items = ensureArray(data);
       if (items.length > 0) {
         console.log(`[Trinks] Cliente encontrado com variação "${v}": id=${items[0].id} nome=${items[0].nome}`);
+        toCache(cacheKey, { found: items[0] });
         return items[0];
       }
     } catch (err) {
@@ -231,6 +237,7 @@ async function buscarClientePorTelefone(telefone) {
     }
   }
   console.log(`[Trinks] Cliente NÃO encontrado para nenhuma variação de ${telefone}`);
+  toCache(cacheKey, { found: null });
   return null;
 }
 

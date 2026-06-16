@@ -222,6 +222,19 @@ async function processMessage(phone, text, isLatest = () => true) {
     context.lead.clienteWhatsApp = conv.client_data.whatsapp;
     context.lead.clienteEmail    = conv.client_data.email;
     context.lead.clienteId       = conv.client_data.clienteId;
+  } else if (context.isCustomer && context.lead.clienteId) {
+    // Cliente foi encontrado no Trinks neste turno → salvar imediatamente em conv.client_data
+    // pra próximos turnos não precisarem buscar de novo (e não esquecerem mesmo se Trinks der 429)
+    conv.client_data = {
+      clienteId: context.lead.clienteId,
+      nome: context.lead.clienteNome,
+      cpf: null,
+      whatsapp: context.lead.clienteWhatsApp,
+      email: context.lead.clienteEmail,
+      dataNascimento: context.lead.dataNascimento || null,
+    };
+    await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
+    console.log(`[Bot] Cliente Trinks (${context.lead.clienteNome}) salvo em conv.client_data para próximos turnos`);
   }
 
   // OpenAI
