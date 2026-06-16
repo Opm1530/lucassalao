@@ -745,7 +745,7 @@ async function buildContext(phone, requestedDate = null) {
       return acc + total;
     }, 0);
     if (totalSlotsDoDia === 0) {
-      datasSemSlots[data] = 'INDISPONÍVEL — não ofereça nenhum horário; informe que a agenda está fechada nesse dia';
+      datasSemSlots[data] = 'INDISPONÍVEL — não ofereça nenhum horário; informe que a agenda está PREENCHIDA nesse dia (NUNCA "fechada")';
     }
   }
 

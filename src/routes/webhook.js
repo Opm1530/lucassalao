@@ -265,9 +265,59 @@ async function processMessage(phone, text, isLatest = () => true) {
       }
     }
 
+    // ── VALIDAÇÃO DE PREÇOS ──────────────────────────────────────────────────
+    // Extrai valores mencionados pela IA e compara com o catálogo de serviços
+    const precosValidos = new Set();
+    const precosMinPorServico = {}; // serviceName.toLowerCase() → menor preço
+    for (const srv of (context.servicos || [])) {
+      if (typeof srv.servicePrice === 'number' && srv.servicePrice > 0) {
+        precosValidos.add(srv.servicePrice);
+        const key = (srv.serviceName || '').toLowerCase();
+        if (!precosMinPorServico[key] || srv.servicePrice < precosMinPorServico[key]) {
+          precosMinPorServico[key] = srv.servicePrice;
+        }
+      }
+    }
+
+    // Regex para "R$ 123,45" ou "R$ 123" ou "R$ 123.45"
+    const REGEX_PRECO = /R\$\s*(\d{1,4}(?:[.,]\d{2})?)/gi;
+    let temPrecoInvalido = false;
+    const precosInvalidos = [];
+
+    for (const msg of (aiResponse.mensagens || [])) {
+      const matches = String(msg).matchAll(REGEX_PRECO);
+      for (const m of matches) {
+        const valorStr = m[1].replace(',', '.');
+        const valor = parseFloat(valorStr);
+        if (isNaN(valor)) continue;
+        // Tolerância: aceita preço se bate com algum do catálogo (ignora centavos)
+        const valorInt = Math.floor(valor);
+        const algumBate = [...precosValidos].some(p => Math.floor(p) === valorInt);
+        if (!algumBate) {
+          temPrecoInvalido = true;
+          precosInvalidos.push(`R$ ${m[1]}`);
+        }
+      }
+    }
+
+    if (temPrecoInvalido) {
+      console.warn(`[Bot] PREÇOS INVÁLIDOS detectados: ${precosInvalidos.join(', ')}. Forçando retry.`);
+      const precosCatalogo = [...precosValidos].sort((a,b) => a-b).map(p => `R$ ${p.toFixed(2).replace('.',',')}`).join(', ');
+      const nota = `SISTEMA: Sua última resposta mencionou os preços ${precosInvalidos.join(', ')} que NÃO ESTÃO no catálogo de serviços. Os preços VÁLIDOS são: ${precosCatalogo}. Reveja servicos[].servicePrice e use APENAS valores que estão lá. Quando um serviço tiver mais de um valor (servicos com mesmo nome mas valores diferentes), use SEMPRE a expressão "a partir de R$ X" com o menor valor.`;
+      conv.history.push({ role: 'user', content: nota, ts: Date.now() });
+      try {
+        const respCorrigida = await openaiService.chat(conv.history, context);
+        conv.history.push({ role: 'assistant', content: JSON.stringify(respCorrigida), ts: Date.now() });
+        aiResponse = respCorrigida;
+        console.log(`[Bot] Resposta corrigida após preços inválidos`);
+      } catch (err) {
+        console.error(`[Bot] Falha ao corrigir preços inválidos:`, err.message);
+      }
+    }
+
     if (temHorarioInvalido) {
       console.warn(`[Bot] HORÁRIOS INVÁLIDOS detectados na resposta: ${horariosInvalidos.join(', ')}. Forçando retry.`);
-      const nota = `SISTEMA: Sua última resposta ofereceu os horários ${horariosInvalidos.join(', ')} que NÃO ESTÃO em horariosValidosPorServico. Isso é ALUCINAÇÃO — você inventou horários que não existem. Reveja loja.disponibilidade e loja.diasIndisponiveis. Se NÃO houver horários válidos para a data pedida, diga que a agenda está fechada nesse dia. NUNCA invente horários que não estão no contexto.`;
+      const nota = `SISTEMA: Sua última resposta ofereceu os horários ${horariosInvalidos.join(', ')} que NÃO ESTÃO em horariosValidosPorServico. Isso é ALUCINAÇÃO — você inventou horários que não existem. Reveja loja.disponibilidade e loja.diasIndisponiveis. Se NÃO houver horários válidos para a data pedida, diga que a agenda está PREENCHIDA nesse dia (NUNCA "fechada"). NUNCA invente horários que não estão no contexto.`;
       conv.history.push({ role: 'user', content: nota, ts: Date.now() });
       try {
         const respCorrigida = await openaiService.chat(conv.history, context);
@@ -300,14 +350,34 @@ async function processMessage(phone, text, isLatest = () => true) {
 
   // ── Ações Trinks ──────────────────────────────────────────────────────────
   if (acao === 'criar_cliente') {
-    try {
-      const result = await trinksService.criarCliente({
-        nome: cliente?.nome,
-        cpf: cliente?.cpf,
-        email: cliente?.email,
-        whatsapp: cliente?.whatsapp || phone,
-        dataNascimento: cliente?.data_nascimento,
-      });
+    // RETRY: até 3 tentativas para criar o cliente em caso de erro de API
+    let result = null;
+    let lastErr = null;
+    const MAX_RETRY_CLIENTE = 3;
+    for (let tentativa = 1; tentativa <= MAX_RETRY_CLIENTE; tentativa++) {
+      try {
+        result = await trinksService.criarCliente({
+          nome: cliente?.nome,
+          cpf: cliente?.cpf,
+          email: cliente?.email,
+          whatsapp: cliente?.whatsapp || phone,
+          dataNascimento: cliente?.data_nascimento,
+        });
+        if (result?.id) {
+          console.log(`[Bot] Cliente criado na tentativa ${tentativa}: id=${result.id}`);
+          break;
+        }
+        console.warn(`[Bot] Tentativa ${tentativa}/${MAX_RETRY_CLIENTE} de criar cliente: sem ID retornado`);
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[Bot] Tentativa ${tentativa}/${MAX_RETRY_CLIENTE} de criar cliente falhou: ${err.message}`);
+        if (tentativa < MAX_RETRY_CLIENTE) {
+          await new Promise(r => setTimeout(r, 2000 * tentativa));
+        }
+      }
+    }
+
+    if (result?.id) {
       await db.saveConversation(phone, conv.history, novoStage || conv.stage, {
         clienteId: result.id,
         nome: cliente?.nome,
@@ -316,9 +386,13 @@ async function processMessage(phone, text, isLatest = () => true) {
         email: cliente?.email || null,
         dataNascimento: cliente?.data_nascimento || null,
       });
-      console.log(`[Bot] Cliente criado na Trinks: id=${result.id}`);
-    } catch (err) {
-      console.error('[Bot] Erro ao criar cliente na Trinks:', err.message);
+    } else {
+      // Cliente não foi criado — substituir mensagens da IA por aviso honesto
+      console.error(`[Bot] Cliente NÃO criado após ${MAX_RETRY_CLIENTE} tentativas:`, lastErr?.message);
+      mensagens.length = 0;
+      mensagens.push('Tive um problema no cadastro agora. 😔');
+      mensagens.push('Vou pedir para o salão concluir esse passo manualmente — em instantes alguém entra em contato. Pode aguardar?');
+      await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
     }
   } else if (acao === 'gerar_agendamento' && agendamento?.length > 0) {
     // ── Normalizar datas de todos os itens ───────────────────────────────────
@@ -376,21 +450,43 @@ async function processMessage(phone, text, isLatest = () => true) {
           continue;
         }
 
-        try {
-          const result = await trinksService.criarAgendamento({
-            clienteId,
-            servicoId: item.id,
-            profissionalId,
-            dataHora: dataHoraISO,
-            duracao: duracaoNum,
-            valor: item.preco,
-            observacoes: cliente?.observacao || null,
-          });
+        // CRIAR AGENDAMENTO COM RETRY (até 3 tentativas em caso de erro de API)
+        let result = null;
+        let lastErr = null;
+        const MAX_RETRY_AGENDAMENTO = 3;
+        for (let tentativa = 1; tentativa <= MAX_RETRY_AGENDAMENTO; tentativa++) {
+          try {
+            result = await trinksService.criarAgendamento({
+              clienteId,
+              servicoId: item.id,
+              profissionalId,
+              dataHora: dataHoraISO,
+              duracao: duracaoNum,
+              valor: item.preco,
+              observacoes: cliente?.observacao || null,
+            });
+            if (result?.id) {
+              console.log(`[Bot] Agendamento criado na tentativa ${tentativa}: id=${result.id}`);
+              break;
+            }
+            console.warn(`[Bot] Tentativa ${tentativa}/${MAX_RETRY_AGENDAMENTO}: Trinks não retornou ID`);
+          } catch (err) {
+            lastErr = err;
+            if (err.isConflito) {
+              // Conflito é determinístico — não adianta tentar de novo
+              throw err;
+            }
+            console.warn(`[Bot] Tentativa ${tentativa}/${MAX_RETRY_AGENDAMENTO} falhou: ${err.message}`);
+            if (tentativa < MAX_RETRY_AGENDAMENTO) {
+              await new Promise(r => setTimeout(r, 2000 * tentativa)); // 2s, 4s, 6s
+            }
+          }
+        }
 
-          // VERIFICAÇÃO PÓS-CRIAÇÃO — confirma que o agendamento existe de fato no Trinks
+        try {
           if (!result?.id) {
-            console.error(`[Bot] Trinks não retornou ID — agendamento NÃO confirmado: ${item.servico} ${item.data} ${item.horario}`);
-            resultados.push({ item, ok: false, erro: 'sem ID de retorno' });
+            console.error(`[Bot] Agendamento FALHOU após ${MAX_RETRY_AGENDAMENTO} tentativas: ${item.servico} ${item.data} ${item.horario}`);
+            resultados.push({ item, ok: false, erro: lastErr?.message || 'sem ID após retries' });
             continue;
           }
 
@@ -588,14 +684,38 @@ async function processMessage(phone, text, isLatest = () => true) {
     ];
   }
 
+  // ─── Detectar serviços com múltiplos valores (precisam de "a partir de") ────
+  const servicosComMultiValor = new Set();
+  const contadorPorNome = {};
+  for (const srv of (context?.servicos || [])) {
+    const nome = (srv.serviceName || '').toLowerCase().trim();
+    if (!nome) continue;
+    contadorPorNome[nome] = (contadorPorNome[nome] || 0) + 1;
+    if (contadorPorNome[nome] > 1) servicosComMultiValor.add(nome);
+  }
+
   // Prefixar TODA mensagem com "*_Atendente Laís disse:_*" (negrito + itálico no WhatsApp)
   // Remove qualquer duplicação caso a IA tenha tentado adicionar a assinatura
+  // Também substitui "agenda fechada" por "agenda preenchida" (vocabulário do salão)
   const mensagensComAssinatura = mensagensFiltradas.map(m => {
-    const limpa = String(m)
+    let limpa = String(m)
       .replace(/^\s*\*?_?\s*atendente\s+la[íi]s\s+disse\s*:?\s*_?\*?\s*/i, '')
       .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
-      .trim();
-    return `*_Atendente Laís disse:_*\n${limpa}`;
+      .replace(/agenda\s+fechada/gi, 'agenda preenchida')
+      .replace(/agendas?\s+est[aá]\s+fechadas?/gi, 'agenda está preenchida');
+
+    // Se mencionar um serviço com múltiplos valores + R$, e NÃO tiver "a partir de",
+    // injetar a expressão antes do valor
+    for (const nomeServico of servicosComMultiValor) {
+      const rxServicoComPreco = new RegExp(`(${nomeServico}[^.]*?)(R\\$\\s*\\d)`, 'gi');
+      limpa = limpa.replace(rxServicoComPreco, (full, antes, preco) => {
+        if (/a\s+partir\s+de/i.test(antes)) return full; // já tem
+        console.log(`[Bot] Adicionando "a partir de" antes de "${preco}" (serviço "${nomeServico}")`);
+        return `${antes}a partir de ${preco}`;
+      });
+    }
+
+    return `*_Atendente Laís disse:_*\n${limpa.trim()}`;
   });
 
   try {
