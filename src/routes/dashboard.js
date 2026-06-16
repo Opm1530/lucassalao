@@ -38,6 +38,7 @@ router.post('/config', (req, res) => {
     'max_history',
     'whatsapp_outros_servicos',
     'horario_fechamento',
+    'openai_daily_token_limit',
   ];
 
   const toSave = {};
@@ -140,6 +141,22 @@ router.post('/webhook/set', async (req, res) => {
 });
 
 // ─── Bot control ─────────────────────────────────────────────────────────────
+
+// Uso de tokens da OpenAI no dia atual + limite configurado
+router.get('/openai/usage', async (req, res) => {
+  try {
+    const uso = await db.getUsoTokenHoje();
+    const limite = parseInt(db.getConfig('openai_daily_token_limit') || '0', 10);
+    res.json({
+      ...uso,
+      limite,
+      percentual: limite > 0 ? Math.min(100, (uso.total / limite) * 100) : 0,
+      bloqueado: limite > 0 && uso.total >= limite,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post('/bot/toggle', (req, res) => {
   const current = db.getConfig('bot_active') === 'true';

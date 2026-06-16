@@ -214,6 +214,12 @@ async function processMessage(phone, text, isLatest = () => true) {
     console.log(`[Bot] ${phone} → acao: ${aiResponse?.acao} | mensagens: ${aiResponse?.mensagens?.length}`);
   } catch (err) {
     console.error('[Bot] Erro OpenAI:', err.message);
+    // Limite diário de tokens atingido — não responde, apenas loga
+    // (evita ficar mandando "estamos fora do ar" pra todos os clientes do dia)
+    if (err.limiteAtingido) {
+      console.warn(`[Bot] Mensagem de ${phone} não processada — limite diário atingido`);
+      return;
+    }
     try { await evolutionService.sendText(phone, 'Desculpe, tive um problema interno. Tente novamente em instantes.'); } catch {}
     return;
   }

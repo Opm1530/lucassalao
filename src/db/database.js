@@ -25,6 +25,9 @@ const DEFAULTS = {
   bot_active: 'true',
   trinks_base_url: 'https://api.trinks.com',
   max_history: '12',
+  // Limite diário de tokens da OpenAI — ao atingir, o bot para de responder até meia-noite
+  // 0 = sem limite. 2M tokens/dia ≈ $0.30/dia no gpt-4o-mini ou $5/dia no gpt-4o
+  openai_daily_token_limit: '2000000',
 };
 
 let configCache = { ...DEFAULTS };
@@ -78,6 +81,14 @@ const SCHEMA = `
     enviado_em      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     respondido_em   TIMESTAMPTZ,
     UNIQUE(agendamento_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS token_usage (
+    dia       DATE  PRIMARY KEY,
+    input     BIGINT NOT NULL DEFAULT 0,
+    output    BIGINT NOT NULL DEFAULT 0,
+    requests  INTEGER NOT NULL DEFAULT 0,
+    custo_usd NUMERIC(10,4) NOT NULL DEFAULT 0
   );
 `;
 
@@ -330,4 +341,44 @@ module.exports = {
   atualizarStatusDisparo,
   getDisparoByPhone,
   listarDisparos,
+  registrarUsoToken,
+  getUsoTokenHoje,
 };
+
+// ─── Token usage (limite diário) ──────────────────────────────────────────────
+
+function diaBrasilia() {
+  // Retorna a data atual no fuso de Brasília no formato YYYY-MM-DD
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }))
+    .toISOString().split('T')[0];
+}
+
+async function registrarUsoToken(input, output, custoUSD) {
+  const dia = diaBrasilia();
+  await pool.query(`
+    INSERT INTO token_usage (dia, input, output, requests, custo_usd)
+    VALUES ($1, $2, $3, 1, $4)
+    ON CONFLICT (dia) DO UPDATE SET
+      input = token_usage.input + EXCLUDED.input,
+      output = token_usage.output + EXCLUDED.output,
+      requests = token_usage.requests + 1,
+      custo_usd = token_usage.custo_usd + EXCLUDED.custo_usd
+  `, [dia, input, output, custoUSD]);
+}
+
+async function getUsoTokenHoje() {
+  const dia = diaBrasilia();
+  const { rows } = await pool.query(
+    'SELECT input, output, requests, custo_usd FROM token_usage WHERE dia = $1',
+    [dia]
+  );
+  if (!rows[0]) return { input: 0, output: 0, total: 0, requests: 0, custo_usd: 0 };
+  const r = rows[0];
+  return {
+    input: Number(r.input),
+    output: Number(r.output),
+    total: Number(r.input) + Number(r.output),
+    requests: r.requests,
+    custo_usd: Number(r.custo_usd),
+  };
+}

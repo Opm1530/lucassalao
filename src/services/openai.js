@@ -9,6 +9,18 @@ function getClient() {
 }
 
 async function chat(history, context) {
+  // VERIFICAÇÃO DE LIMITE DIÁRIO ANTES DE QUALQUER COISA
+  const limite = parseInt(db.getConfig('openai_daily_token_limit') || '0', 10);
+  if (limite > 0) {
+    const uso = await db.getUsoTokenHoje();
+    if (uso.total >= limite) {
+      console.warn(`[OpenAI] LIMITE DIÁRIO ATINGIDO — ${uso.total}/${limite} tokens (${uso.requests} requests, ~$${uso.custo_usd.toFixed(2)})`);
+      const err = new Error(`Limite diário de tokens atingido (${uso.total}/${limite})`);
+      err.limiteAtingido = true;
+      throw err;
+    }
+  }
+
   const client = getClient();
   const model = db.getConfig('openai_model') || 'gpt-4o-mini';
 
@@ -91,6 +103,9 @@ async function chat(history, context) {
       const outPrice = isMini ? 0.60 : 10;
       const custoUSD = (inputT * inPrice / 1_000_000) + (outputT * outPrice / 1_000_000);
       console.log(`[OpenAI] model=${model} | in=${inputT} out=${outputT} tokens | ~$${custoUSD.toFixed(4)}`);
+
+      // Registra no contador diário (não bloqueia retorno em caso de erro)
+      db.registrarUsoToken(inputT, outputT, custoUSD).catch(e => console.error('[OpenAI] Erro ao registrar uso:', e.message));
 
       const raw = response.choices[0].message.content;
       try {
