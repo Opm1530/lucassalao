@@ -328,6 +328,45 @@ async function processMessage(phone, text, isLatest = () => true) {
       }
     }
 
+    // ── VALIDAÇÃO ANTI-CADASTRO DUPLICADO ─────────────────────────────────
+    // Se o cliente JÁ está cadastrado (isCustomer=true) e a IA pediu dados de
+    // cadastro mesmo assim, bloqueia e força regenerar.
+    const textoCompletoCadastro = (aiResponse.mensagens || []).join(' ');
+    const pediuCadastro = /(nome\s+completo|cpf|data\s+de\s+nascimento|me\s+(?:passa|envia|fala)\s+seu\s+(?:nome|cpf|email|e-mail))/i.test(textoCompletoCadastro);
+
+    if (context.isCustomer && pediuCadastro) {
+      console.warn(`[Bot] CADASTRO PEDIDO INDEVIDAMENTE — cliente já está cadastrado (${context.lead.clienteNome}). Forçando retry.`);
+      const dadosCliente = {
+        nome: context.lead.clienteNome,
+        whatsapp: context.lead.clienteWhatsApp,
+        email: context.lead.clienteEmail,
+        dataNascimento: context.lead.dataNascimento,
+      };
+      const nota = `SISTEMA: A cliente JÁ ESTÁ CADASTRADA (isCustomer === true). Você NÃO deve pedir nenhum dado de cadastro.
+
+Dados que já temos:
+- Nome: ${dadosCliente.nome}
+- WhatsApp: ${dadosCliente.whatsapp}
+- E-mail: ${dadosCliente.email || '(não informado)'}
+- Nascimento: ${dadosCliente.dataNascimento || '(não informado)'}
+
+INSTRUÇÕES OBRIGATÓRIAS:
+1. NÃO peça nome, CPF, e-mail, data de nascimento nem confirmação de WhatsApp.
+2. Use os dados acima diretamente.
+3. Se a cliente já escolheu o horário, dispare gerar_agendamento na próxima resposta com os dados já existentes.
+4. Se ainda falta escolher serviço/data/horário, conduza o atendimento normalmente sem pedir cadastro.`;
+
+      conv.history.push({ role: 'user', content: nota, ts: Date.now() });
+      try {
+        const respCorrigida = await openaiService.chat(conv.history, context);
+        conv.history.push({ role: 'assistant', content: JSON.stringify(respCorrigida), ts: Date.now() });
+        aiResponse = respCorrigida;
+        console.log(`[Bot] Resposta corrigida após pedido indevido de cadastro: acao=${aiResponse?.acao}`);
+      } catch (err) {
+        console.error(`[Bot] Falha ao corrigir cadastro indevido:`, err.message);
+      }
+    }
+
     // ── VALIDAÇÃO REVERSA — IA diz "sem vagas" quando na verdade TEM ───────
     // Pega texto bruto da resposta
     const textoCompleto = (aiResponse.mensagens || []).join(' ').toLowerCase();
