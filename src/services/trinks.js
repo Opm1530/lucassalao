@@ -215,17 +215,22 @@ async function buscarClientePorTelefone(telefone) {
   }
 
   const client = getClient();
+  console.log(`[Trinks] Buscando cliente — variações: ${variations.join(', ')}`);
   for (const v of variations) {
     try {
       const { data } = await client.get('/v1/clientes', {
         params: { telefone: v, pageSize: 5 },
       });
       const items = ensureArray(data);
-      if (items.length > 0) return items[0];
+      if (items.length > 0) {
+        console.log(`[Trinks] Cliente encontrado com variação "${v}": id=${items[0].id} nome=${items[0].nome}`);
+        return items[0];
+      }
     } catch (err) {
       console.warn(`[Trinks] Falha na busca por telefone (${v}):`, err.message);
     }
   }
+  console.log(`[Trinks] Cliente NÃO encontrado para nenhuma variação de ${telefone}`);
   return null;
 }
 
@@ -364,15 +369,52 @@ async function listarDisponibilidade(data) {
     });
 
     const items = ensureArray(resp);
-    // O Trinks já considera ausências e agendamentos no horariosVagos — não precisa de chamada extra
-    console.log(`[Trinks] Disponibilidade ${data}:`, items.map(p => `${p.nome}=${p.horariosVagos?.length || 0}slots`).join(', '));
 
-    return items.map(prof => ({
-      profissionalId: prof.id,
-      profissionalNome: prof.nome,
-      horariosDisponiveis: prof.horariosVagos ?? [],
-      data,
-    }));
+    // CRUZAMENTO: buscar agendamentos do dia e subtrair de horariosVagos
+    // (porque o Trinks às vezes retorna slots já ocupados como vagos)
+    let agendamentosDoDia = [];
+    try {
+      agendamentosDoDia = await listarAgendamentosPorData(data);
+    } catch (err) {
+      console.warn(`[Trinks] Falha ao buscar agendamentos para cruzar com vagos (${data}):`, err.message);
+    }
+
+    console.log(`[Trinks] Disponibilidade ${data}:`, items.map(p => `${p.nome}=${p.horariosVagos?.length || 0}slots`).join(', '), `| ${agendamentosDoDia.length} agendamentos ativos`);
+
+    return items.map(prof => {
+      let vagos = prof.horariosVagos ?? [];
+
+      // Filtra agendamentos deste profissional
+      const ags = agendamentosDoDia.filter(a =>
+        String(a.profissional || '').toLowerCase() === String(prof.nome || '').toLowerCase()
+        || String(a.profissionalId) === String(prof.id)
+      );
+
+      // Para cada agendamento, remove os blocos de 30min que caem dentro do intervalo
+      for (const ag of ags) {
+        if (!ag.horario) continue;
+        const [hh, mm] = ag.horario.split(':').map(Number);
+        const inicioMin = hh * 60 + mm;
+        const fimMin = inicioMin + (ag.duracao || 30);
+
+        const antes = vagos.length;
+        vagos = vagos.filter(h => {
+          const [vhh, vmm] = h.split(':').map(Number);
+          const t = vhh * 60 + vmm;
+          return t < inicioMin || t >= fimMin;
+        });
+        if (antes !== vagos.length) {
+          console.log(`[Trinks] Removidos ${antes - vagos.length} slots de ${prof.nome} (${ag.horario} ${ag.servico || ''} - ${ag.duracao}min)`);
+        }
+      }
+
+      return {
+        profissionalId: prof.id,
+        profissionalNome: prof.nome,
+        horariosDisponiveis: vagos,
+        data,
+      };
+    });
   } catch (err) {
     console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
