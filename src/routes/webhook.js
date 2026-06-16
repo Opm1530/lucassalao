@@ -229,6 +229,58 @@ async function processMessage(phone, text, isLatest = () => true) {
   try {
     aiResponse = await openaiService.chat(conv.history, context);
     console.log(`[Bot] ${phone} → acao: ${aiResponse?.acao} | mensagens: ${aiResponse?.mensagens?.length}`);
+
+    // ── VALIDAÇÃO DE HORÁRIOS — barra hallucination ────────────────────────
+    // Coleta TODOS os slots válidos do contexto (todas datas, todos serviços)
+    const slotsValidosGlobal = new Set();
+    const dispMap = context.loja?.disponibilidade || {};
+    for (const profSlots of Object.values(dispMap)) {
+      for (const prof of profSlots) {
+        for (const slots of Object.values(prof.horariosValidosPorServico || {})) {
+          slots.forEach(h => slotsValidosGlobal.add(h));
+        }
+      }
+    }
+
+    // Procura horários nas mensagens da IA e verifica se cada um é válido
+    const REGEX_HORA = /\b(\d{1,2}):(\d{2})\b/g;
+    let temHorarioInvalido = false;
+    const horariosInvalidos = [];
+    for (const msg of (aiResponse.mensagens || [])) {
+      const matches = String(msg).matchAll(REGEX_HORA);
+      for (const m of matches) {
+        const hh = m[1].padStart(2, '0');
+        const mm = m[2];
+        const horario = `${hh}:${mm}`;
+        // Ignorar horários que parecem ser referência a um agendamento existente
+        // (ex: "seu agendamento das 14:00 foi cancelado") — só validar se estiver oferecendo
+        if (!slotsValidosGlobal.has(horario) && /(\d{1,2}:\d{2}).{0,40}(disponível|temos|prefere|pode|posso agendar|posso marcar|às)/i.test(msg)) {
+          // Verifica também se não é um horário do agendamento do próprio cliente
+          const éAgendamentoExistente = (context.lead?.agendamentos || []).some(ag => ag.horario === horario);
+          if (!éAgendamentoExistente) {
+            temHorarioInvalido = true;
+            horariosInvalidos.push(horario);
+          }
+        }
+      }
+    }
+
+    if (temHorarioInvalido) {
+      console.warn(`[Bot] HORÁRIOS INVÁLIDOS detectados na resposta: ${horariosInvalidos.join(', ')}. Forçando retry.`);
+      const nota = `SISTEMA: Sua última resposta ofereceu os horários ${horariosInvalidos.join(', ')} que NÃO ESTÃO em horariosValidosPorServico. Isso é ALUCINAÇÃO — você inventou horários que não existem. Reveja loja.disponibilidade e loja.diasIndisponiveis. Se NÃO houver horários válidos para a data pedida, diga que a agenda está fechada nesse dia. NUNCA invente horários que não estão no contexto.`;
+      conv.history.push({ role: 'user', content: nota, ts: Date.now() });
+      try {
+        const respCorrigida = await openaiService.chat(conv.history, context);
+        conv.history.push({ role: 'assistant', content: JSON.stringify(respCorrigida), ts: Date.now() });
+        aiResponse = respCorrigida;
+        console.log(`[Bot] Resposta corrigida após hallucination: acao=${aiResponse?.acao}`);
+      } catch (err) {
+        console.error(`[Bot] Falha ao corrigir hallucination:`, err.message);
+        // Como fallback, troca por mensagem segura
+        aiResponse.mensagens = ['Deixa eu verificar a agenda direitinho e te respondo em alguns minutos. 😊'];
+        aiResponse.acao = 'nenhuma';
+      }
+    }
   } catch (err) {
     console.error('[Bot] Erro OpenAI:', err.message);
     // Limite diário de tokens atingido — não responde, apenas loga
