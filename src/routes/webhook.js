@@ -795,30 +795,45 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
         }
       }
     }
-  } else if (acao === 'cancelar_agendamento') {
-    const ids = extrairIdsCancelamento(agendamento_cancelar);
-    console.log(`[Bot] Cancelamento — IDs extraídos: ${JSON.stringify(ids)} (entrada: ${JSON.stringify(agendamento_cancelar)})`);
+  } else if (acao !== 'criar_cliente') {
+    await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
+  }
+
+  // PROCESSAMENTO DE CANCELAMENTO — SEMPRE que vier agendamento_cancelar preenchido,
+  // independente da acao. A IA frequentemente envia agendamento_cancelar com acao errada
+  // (ex: finalizar_conversa em vez de cancelar_agendamento) — não podemos ignorar o pedido.
+  const idsCancelarSempre = extrairIdsCancelamento(agendamento_cancelar);
+  if (idsCancelarSempre.length > 0) {
+    console.log(`[Bot] Cancelamento — IDs extraídos: ${JSON.stringify(idsCancelarSempre)} (entrada: ${JSON.stringify(agendamento_cancelar)}, acao=${acao})`);
 
     let cancelouTodos = true;
-    for (const id of ids) {
+    for (const id of idsCancelarSempre) {
       try {
         await trinksService.cancelarAgendamento(id);
-        console.log(`[Bot] Agendamento ${id} cancelado`);
+        console.log(`[Bot] Agendamento ${id} cancelado (acao reportada=${acao})`);
+        try {
+          await db.registrarAcaoBot({
+            tipo: 'cancelado',
+            trinksId: String(id),
+            phone,
+            clienteId: context.lead?.clienteId ? String(context.lead.clienteId) : null,
+            servico: null,
+            dataAgendamento: null,
+            horario: null,
+            profissionalId: null,
+          });
+        } catch { /* silencioso */ }
       } catch (err) {
         console.error(`[Bot] Erro ao cancelar agendamento ${id}:`, err.message);
         cancelouTodos = false;
       }
     }
 
-    await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
-
     if (!cancelouTodos) {
       mensagens.length = 0;
       mensagens.push('Tive um problema ao tentar cancelar seu horário. 😔');
       mensagens.push('Por favor, entre em contato diretamente com o salão para garantir o cancelamento!');
     }
-  } else if (acao !== 'criar_cliente') {
-    await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
   }
 
   // ── Modo humano ───────────────────────────────────────────────────────────
