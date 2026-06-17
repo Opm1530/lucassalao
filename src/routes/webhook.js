@@ -514,6 +514,48 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
       await db.saveConversation(phone, conv.history, novoStage || conv.stage, conv.client_data);
     }
   } else if (acao === 'gerar_agendamento' && agendamento?.length > 0) {
+    // ── REMARCAÇÃO AUTOMÁTICA ────────────────────────────────────────────────
+    // Se a cliente acabou de pedir cancelamento/remarcação E tem agendamentos existentes
+    // E o novo agendamento é numa data diferente → cancela os existentes primeiro
+    const remarcacaoDetectada = detectarRemarcacao(conv.history);
+    const agendamentosExistentes = context.lead?.agendamentos || [];
+    const novasDatas = new Set(agendamento.map(a => a.data));
+
+    let idsParaCancelar = [];
+    if (agendamento_cancelar) {
+      idsParaCancelar = Array.isArray(agendamento_cancelar)
+        ? agendamento_cancelar.map(a => a.id).filter(Boolean)
+        : agendamento_cancelar?.id ? [agendamento_cancelar.id] : [];
+    }
+
+    // Se for remarcação e a IA esqueceu de popular agendamento_cancelar, fazemos por ela
+    if (remarcacaoDetectada && agendamentosExistentes.length > 0 && idsParaCancelar.length === 0) {
+      const paraCancelar = agendamentosExistentes
+        .filter(ag => {
+          // Mantém só agendamentos em data DIFERENTE das novas (não cancela o que acabou de criar)
+          const dataBR = ag.data ? `${ag.data.split('-')[2]}/${ag.data.split('-')[1]}/${ag.data.split('-')[0]}` : null;
+          return dataBR && !novasDatas.has(dataBR);
+        });
+      idsParaCancelar = paraCancelar.map(a => a.id);
+      if (idsParaCancelar.length > 0) {
+        console.log(`[Bot] REMARCAÇÃO detectada — cancelando automaticamente IDs: ${idsParaCancelar.join(', ')}`);
+      }
+    }
+
+    // Executa cancelamentos ANTES de criar o novo
+    const cancelamentosOk = [];
+    const cancelamentosFalha = [];
+    for (const id of idsParaCancelar) {
+      try {
+        await trinksService.cancelarAgendamento(id);
+        cancelamentosOk.push(id);
+        console.log(`[Bot] Agendamento ${id} cancelado antes de remarcar`);
+      } catch (err) {
+        cancelamentosFalha.push(id);
+        console.error(`[Bot] Falha ao cancelar ${id}:`, err.message);
+      }
+    }
+
     // ── Normalizar datas de todos os itens ───────────────────────────────────
     for (const item of agendamento) {
       let dataNormalizada = item.data || '';
@@ -636,6 +678,10 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
       const falhas   = resultados.filter(r => !r.ok);
 
       mensagens.length = 0;
+      // Avisar cancelamento se aconteceu
+      if (cancelamentosOk.length > 0) {
+        mensagens.push(`Seu horário anterior foi cancelado. 🗓️`);
+      }
       if (sucessos.length > 0) {
         if (sucessos.length === 1) {
           const { item } = sucessos[0];
@@ -853,6 +899,20 @@ function parseDate(str) {
   const month = parts[1].padStart(2, '0');
   const year  = parts[2] ? (parts[2].length === 2 ? `20${parts[2]}` : parts[2]) : new Date().getFullYear().toString();
   return `${year}-${month}-${day}`;
+}
+
+// Detecta se há sinal de remarcação/cancelamento nas últimas mensagens do cliente
+function detectarRemarcacao(history) {
+  const ultimasMsgsCliente = history
+    .filter(m => m.role === 'user')
+    .slice(-5)
+    .map(m => (m.content || '').toLowerCase());
+  const padroes = [
+    /cancela(?:r|mos)?/, /desmarc/, /remarc/, /trocar.*hor[áa]rio/, /mudar.*hor[áa]rio/,
+    /tive um imprevisto/, /n[ãa]o vou conseguir/, /n[ãa]o consigo (?:ir|comparecer)/,
+    /transfer/, /adiar/, /mudar (?:o )?dia/, /outro dia/,
+  ];
+  return ultimasMsgsCliente.some(msg => padroes.some(rx => rx.test(msg)));
 }
 
 // Detecta "DD de Mês" (ex: "25 de julho", "5 de agosto") no texto e retorna AAAA-MM-DD
