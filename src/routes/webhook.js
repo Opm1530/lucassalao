@@ -194,6 +194,10 @@ async function processMessage(phone, text, isLatest = () => true) {
       requestedDate = parseDiaMes(text);
     }
     if (!requestedDate) {
+      // Tenta detectar "dia 19", "no dia 19", "pro dia 19"
+      requestedDate = parseDiaApenas(text);
+    }
+    if (!requestedDate) {
       // Tenta detectar dia da semana no texto e converter para data
       requestedDate = parseDiaSemana(text);
     }
@@ -954,6 +958,25 @@ function parseDate(str) {
   const month = parts[1].padStart(2, '0');
   const year  = parts[2] ? (parts[2].length === 2 ? `20${parts[2]}` : parts[2]) : new Date().getFullYear().toString();
   return `${year}-${month}-${day}`;
+}
+
+// Detecta padrões "dia 19", "no dia 19", "pro dia 19" e retorna AAAA-MM-DD
+// Assume mês atual; se o dia já passou, usa o próximo mês.
+function parseDiaApenas(text) {
+  const match = text.toLowerCase().match(/\b(?:no\s+|pro\s+|para\s+o\s+|para\s+|dia\s+)dia\s+(\d{1,2})\b/i)
+    || text.toLowerCase().match(/\bdia\s+(\d{1,2})\b/i);
+  if (!match) return null;
+  const dia = parseInt(match[1], 10);
+  if (dia < 1 || dia > 31) return null;
+  const hoje = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  let ano = hoje.getFullYear();
+  let mes = hoje.getMonth() + 1;
+  // Se o dia mencionado já passou neste mês, assume próximo mês
+  if (dia < hoje.getDate()) {
+    mes += 1;
+    if (mes > 12) { mes = 1; ano += 1; }
+  }
+  return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
 }
 
 // Detecta se há sinal de remarcação/cancelamento nas últimas mensagens do cliente
