@@ -525,12 +525,7 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
     const agendamentosExistentes = context.lead?.agendamentos || [];
     const novasDatas = new Set(agendamento.map(a => a.data));
 
-    let idsParaCancelar = [];
-    if (agendamento_cancelar) {
-      idsParaCancelar = Array.isArray(agendamento_cancelar)
-        ? agendamento_cancelar.map(a => a.id).filter(Boolean)
-        : agendamento_cancelar?.id ? [agendamento_cancelar.id] : [];
-    }
+    let idsParaCancelar = extrairIdsCancelamento(agendamento_cancelar);
 
     // Se for remarcação e a IA esqueceu de popular agendamento_cancelar, fazemos por ela
     if (remarcacaoDetectada && agendamentosExistentes.length > 0 && idsParaCancelar.length === 0) {
@@ -801,9 +796,8 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
       }
     }
   } else if (acao === 'cancelar_agendamento') {
-    const ids = Array.isArray(agendamento_cancelar)
-      ? agendamento_cancelar.map(a => a.id).filter(Boolean)
-      : agendamento_cancelar?.id ? [agendamento_cancelar.id] : [];
+    const ids = extrairIdsCancelamento(agendamento_cancelar);
+    console.log(`[Bot] Cancelamento — IDs extraídos: ${JSON.stringify(ids)} (entrada: ${JSON.stringify(agendamento_cancelar)})`);
 
     let cancelouTodos = true;
     for (const id of ids) {
@@ -977,6 +971,37 @@ function parseDiaApenas(text) {
     if (mes > 12) { mes = 1; ano += 1; }
   }
   return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`;
+}
+
+// Extrai IDs de cancelamento aceitando QUALQUER formato que a IA mandar:
+// - { id: 123 }
+// - { id: "123" }
+// - [{ id: 123 }, { id: 456 }]
+// - 123 (apenas o número)
+// - "123" (string)
+// - [123, 456] (array de números)
+// - "123,456" (string com vírgula)
+function extrairIdsCancelamento(valor) {
+  if (valor === null || valor === undefined) return [];
+
+  // Já é número ou string solta
+  if (typeof valor === 'number') return [String(valor)];
+  if (typeof valor === 'string') {
+    return valor.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  // Array
+  if (Array.isArray(valor)) {
+    return valor.flatMap(item => extrairIdsCancelamento(item));
+  }
+
+  // Objeto: pode ser { id: X } ou { agendamentoId: X } ou { ID: X }
+  if (typeof valor === 'object') {
+    const id = valor.id ?? valor.agendamentoId ?? valor.ID ?? valor.Id;
+    if (id !== undefined && id !== null) return [String(id)];
+  }
+
+  return [];
 }
 
 // Detecta se há sinal de remarcação/cancelamento nas últimas mensagens do cliente
