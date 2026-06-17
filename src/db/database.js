@@ -90,6 +90,24 @@ const SCHEMA = `
     requests  INTEGER NOT NULL DEFAULT 0,
     custo_usd NUMERIC(10,4) NOT NULL DEFAULT 0
   );
+
+  -- Log local de ações do bot (criação/cancelamento) para idempotência e sanidade
+  -- Funciona como cache de curtíssimo prazo das ações do próprio bot.
+  -- Limpeza automática: registros com mais de 7 dias são apagados pelo job.
+  CREATE TABLE IF NOT EXISTS acoes_bot (
+    id              SERIAL      PRIMARY KEY,
+    tipo            TEXT        NOT NULL,  -- 'criado' | 'cancelado'
+    trinks_id       TEXT,                  -- id do agendamento no Trinks
+    phone           TEXT        NOT NULL,
+    cliente_id      TEXT,
+    servico         TEXT,
+    data_agendamento DATE,
+    horario         TEXT,
+    profissional_id TEXT,
+    criado_em       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_acoes_bot_lookup
+    ON acoes_bot (phone, data_agendamento, horario, criado_em DESC);
 `;
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -343,6 +361,9 @@ module.exports = {
   listarDisparos,
   registrarUsoToken,
   getUsoTokenHoje,
+  registrarAcaoBot,
+  buscarAgendamentoRecente,
+  limparAcoesAntigas,
 };
 
 // ─── Token usage (limite diário) ──────────────────────────────────────────────
@@ -364,6 +385,46 @@ async function registrarUsoToken(input, output, custoUSD) {
       requests = token_usage.requests + 1,
       custo_usd = token_usage.custo_usd + EXCLUDED.custo_usd
   `, [dia, input, output, custoUSD]);
+}
+
+// ─── Ações do bot (idempotência local) ────────────────────────────────────────
+
+/**
+ * Registra uma ação do bot (criação ou cancelamento de agendamento).
+ * Usado para detectar reprocessamentos e evitar duplicação.
+ */
+async function registrarAcaoBot({ tipo, trinksId, phone, clienteId, servico, dataAgendamento, horario, profissionalId }) {
+  await pool.query(`
+    INSERT INTO acoes_bot (tipo, trinks_id, phone, cliente_id, servico, data_agendamento, horario, profissional_id)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+  `, [tipo, trinksId, phone, clienteId, servico, dataAgendamento, horario, profissionalId]);
+}
+
+/**
+ * Verifica se o bot já criou esse mesmo agendamento nos últimos N minutos.
+ * Retorna o trinks_id do agendamento existente, ou null se não houver.
+ * Janela padrão: 10 minutos (suficiente pra cobrir reprocessamentos de fila).
+ */
+async function buscarAgendamentoRecente({ phone, dataAgendamento, horario, servico }, minutosJanela = 10) {
+  const { rows } = await pool.query(`
+    SELECT trinks_id, criado_em FROM acoes_bot
+    WHERE tipo = 'criado'
+      AND phone = $1
+      AND data_agendamento = $2
+      AND horario = $3
+      AND ($4::text IS NULL OR LOWER(servico) = LOWER($4))
+      AND criado_em > NOW() - ($5 || ' minutes')::interval
+    ORDER BY criado_em DESC
+    LIMIT 1
+  `, [phone, dataAgendamento, horario, servico || null, String(minutosJanela)]);
+  return rows[0] || null;
+}
+
+/**
+ * Limpa ações antigas (mais de 7 dias) — chamado periodicamente.
+ */
+async function limparAcoesAntigas() {
+  await pool.query(`DELETE FROM acoes_bot WHERE criado_em < NOW() - INTERVAL '7 days'`);
 }
 
 async function getUsoTokenHoje() {

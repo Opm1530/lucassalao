@@ -113,6 +113,20 @@ function iniciarJobAniversario() {
   agendarProximo();
 }
 
+function iniciarJobLimpeza() {
+  // Limpa registros de acoes_bot com mais de 7 dias — roda 1x por dia
+  const UM_DIA = 24 * 60 * 60 * 1000;
+  const executar = async () => {
+    try {
+      await db.limparAcoesAntigas();
+      console.log('[Limpeza] Ações antigas removidas');
+    } catch (err) {
+      console.error('[Limpeza] Erro:', err.message);
+    }
+  };
+  setInterval(executar, UM_DIA);
+}
+
 function iniciarJobConfirmacao() {
   const INTERVALO = 30 * 60 * 1000; // 30 minutos
 
@@ -142,6 +156,7 @@ function iniciarJobConfirmacao() {
     });
     iniciarJobConfirmacao();
     iniciarJobAniversario();
+    iniciarJobLimpeza();
   } catch (err) {
     console.error('[Server] Falha ao conectar no banco de dados:', err.message);
     process.exit(1);

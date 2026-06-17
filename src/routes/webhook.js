@@ -550,6 +550,19 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
         await trinksService.cancelarAgendamento(id);
         cancelamentosOk.push(id);
         console.log(`[Bot] Agendamento ${id} cancelado antes de remarcar`);
+        // Registra cancelamento no log local
+        try {
+          await db.registrarAcaoBot({
+            tipo: 'cancelado',
+            trinksId: String(id),
+            phone,
+            clienteId: context.lead?.clienteId ? String(context.lead.clienteId) : null,
+            servico: null,
+            dataAgendamento: null,
+            horario: null,
+            profissionalId: null,
+          });
+        } catch (errLog) { /* silencioso */ }
       } catch (err) {
         cancelamentosFalha.push(id);
         console.error(`[Bot] Falha ao cancelar ${id}:`, err.message);
@@ -596,6 +609,31 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
         }
         const dataHoraISO = buildISODate(item.data, item.horario);
         const duracaoNum = typeof item.duracao === 'number' ? item.duracao : parseInt(item.duracao, 10);
+        const dataISO = item.data.split('/').reverse().join('-'); // DD/MM/AAAA → AAAA-MM-DD
+
+        // IDEMPOTÊNCIA 1 — log local do bot: criamos isso nos últimos 10 min?
+        // Resolve o caso de reprocessamento (resposta descartada, fila duplicada, etc)
+        const acaoRecente = await db.buscarAgendamentoRecente({
+          phone,
+          dataAgendamento: dataISO,
+          horario: item.horario,
+          servico: item.servico,
+        }, 10);
+        if (acaoRecente) {
+          console.log(`[Bot] Agendamento já criado pelo bot há pouco (trinks_id=${acaoRecente.trinks_id}, há ${Math.round((Date.now() - new Date(acaoRecente.criado_em)) / 1000)}s) — tratando como sucesso`);
+          resultados.push({ item, ok: true, agendamentoId: acaoRecente.trinks_id, jaExistia: true });
+          continue;
+        }
+
+        // IDEMPOTÊNCIA 2 — context da Trinks: cliente já tem agendamento nesse slot?
+        const agendamentoExistente = (context.lead?.agendamentos || []).find(ag =>
+          ag.data === dataISO && ag.horario === item.horario && String(ag.servico).toLowerCase() === String(item.servico).toLowerCase()
+        );
+        if (agendamentoExistente) {
+          console.log(`[Bot] Cliente já tem agendamento neste slot via Trinks (id=${agendamentoExistente.id}) — tratando como sucesso`);
+          resultados.push({ item, ok: true, agendamentoId: agendamentoExistente.id, jaExistia: true });
+          continue;
+        }
 
         // VERIFICAÇÃO DETERMINÍSTICA antes de marcar — checa em tempo real no Trinks
         // se o slot ainda está livre. Se não estiver, aborta sem passar pela IA.
@@ -665,6 +703,23 @@ INSTRUÇÕES OBRIGATÓRIAS para a próxima resposta:
           }
 
           console.log(`[Bot] Agendamento criado e verificado: id=${result.id} | ${item.servico} ${item.data} ${item.horario}`);
+
+          // Registra no log local para idempotência futura
+          try {
+            await db.registrarAcaoBot({
+              tipo: 'criado',
+              trinksId: String(result.id),
+              phone,
+              clienteId: String(clienteId),
+              servico: item.servico,
+              dataAgendamento: dataISO,
+              horario: item.horario,
+              profissionalId: profissionalId ? String(profissionalId) : null,
+            });
+          } catch (errLog) {
+            console.warn(`[Bot] Falha ao registrar acao_bot:`, errLog.message);
+          }
+
           resultados.push({ item, ok: true, agendamentoId: result.id });
         } catch (err) {
           console.error(`[Bot] Erro ao criar agendamento (${item.servico}):`, err.message);
