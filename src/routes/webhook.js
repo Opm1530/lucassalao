@@ -1216,9 +1216,22 @@ async function processarComAgent(phone, conv, context) {
       .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
       .replace(/agenda\s+fechada/gi, 'agenda preenchida')
       .replace(/agendas?\s+est[aá]\s+fechadas?/gi, 'agenda está preenchida')
+      // Markdown link [texto](url) → url pura (WhatsApp não renderiza markdown)
+      .replace(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/g, '$1')
       .trim();
     return `*_Atendente Laís disse:_*\n${limpa}`;
   });
+
+  // Link para outros serviços — enviado UMA vez após um agendamento ser criado com sucesso
+  if (result.agendamentosCriados?.length > 0) {
+    const outroNumero = db.getConfig('whatsapp_outros_servicos');
+    const jaEnviouLink = conv.history.some(m => m.role === 'assistant' && m.content?.includes('wa.me'));
+    if (outroNumero && !jaEnviouLink) {
+      const numeroLimpo = String(outroNumero).replace(/\D/g, '');
+      mensagensFinal.push(`*_Atendente Laís disse:_*\nSe quiser marcar outro serviço com um profissional diferente do salão, é só falar por aqui 👇`);
+      mensagensFinal.push(`https://wa.me/${numeroLimpo}`);
+    }
+  }
 
   try {
     await evolutionService.sendMessages(phone, mensagensFinal);
