@@ -41,6 +41,7 @@ router.post('/config', (req, res) => {
     'openai_daily_token_limit',
     'test_mode_active',
     'test_mode_phone',
+    'use_agent',
   ];
 
   const toSave = {};

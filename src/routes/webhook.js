@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/database');
 const openaiService = require('../services/openai');
+const agentService = require('../services/agent');
 const trinksService = require('../services/trinks');
 const evolutionService = require('../services/evolution');
 const whisperService = require('../services/whisper');
@@ -239,6 +240,12 @@ async function processMessage(phone, text, isLatest = () => true) {
     };
     await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
     console.log(`[Bot] Cliente Trinks (${context.lead.clienteNome}) salvo em conv.client_data para próximos turnos`);
+  }
+
+  // ─── NOVO AGENTE COM TOOL CALLING (feature flag) ────────────────────────
+  // Se use_agent=true, usa o caminho novo (mais robusto). Senão, continua no antigo.
+  if (db.getConfig('use_agent') === 'true') {
+    return await processarComAgent(phone, conv, context);
   }
 
   // OpenAI
@@ -1095,6 +1102,92 @@ function buildISODate(dataStr, horario) {
     iso = `${year}-${month}-${day}`;
   }
   return `${iso}T${horario}:00`;
+}
+
+// ─── NOVO AGENTE BASEADO EM TOOL CALLING ─────────────────────────────────────
+// Caminho alternativo, mais robusto. Ativado via config use_agent=true.
+async function processarComAgent(phone, conv, context) {
+  let result;
+  try {
+    result = await agentService.chat(conv.history, context, phone);
+    console.log(`[Agent] resultado: ${result.mensagens.length} msgs, ${result.agendamentosCriados.length} agendados, ${result.cancelamentosOk.length} cancelados`);
+  } catch (err) {
+    console.error(`[Agent] Erro:`, err.message);
+    if (err.limiteAtingido) {
+      console.warn(`[Agent] Limite diário atingido — não responde`);
+      return;
+    }
+    try { await evolutionService.sendText(phone, 'Desculpe, tive um problema interno. Tente novamente em instantes.'); } catch {}
+    return;
+  }
+
+  // Atualiza conv.client_data se um cliente foi criado durante o turno
+  if (result.clienteCriado) {
+    conv.client_data = {
+      clienteId: result.clienteCriado.id,
+      nome: result.clienteCriado.nome,
+      cpf: result.clienteCriado.cpf || null,
+      whatsapp: result.clienteCriado.whatsapp || phone.replace('@s.whatsapp.net', ''),
+      email: result.clienteCriado.email || null,
+      dataNascimento: result.clienteCriado.data_nascimento || null,
+    };
+  }
+
+  // Salva resposta no histórico (como assistant turn)
+  if (result.mensagens.length > 0) {
+    conv.history.push({
+      role: 'assistant',
+      content: JSON.stringify({ mensagens: result.mensagens }),
+      ts: Date.now(),
+    });
+  }
+
+  const novoStage = result.finalizar ? 'fechado'
+                 : result.encaminharHumano ? 'humano'
+                 : conv.stage;
+  await db.saveConversation(phone, conv.history, novoStage, conv.client_data);
+
+  if (result.encaminharHumano) {
+    await db.setHumanMode(phone, true);
+    await db.addLog(phone, 'system', `MODO_HUMANO_ATIVADO (${result.motivoHumano || 'sem motivo'})`);
+  }
+
+  // Filtros pós-IA (mesmos do caminho antigo)
+  let mensagensOut = result.mensagens || [];
+  const padroesEspera = [
+    /um\s+momento/i, /aguarde/i, /vou\s+verificar/i, /vou\s+confirmar/i,
+    /vou\s+buscar/i, /vou\s+(?:ver|checar|consultar)/i,
+    /j[áa]\s+te\s+(?:informo|aviso|retorno)/i, /deixa?\s+eu\s+ver/i,
+    /agora\s*,?\s*vamos\s+verificar/i, /s[óo]\s+um\s+(?:momento|minuto|segundo|instante)/i,
+  ];
+  mensagensOut = mensagensOut.filter(m => {
+    const ehEspera = padroesEspera.some(rx => rx.test(String(m).trim()));
+    if (ehEspera) console.warn(`[Agent] Mensagem de espera bloqueada: "${m}"`);
+    return !ehEspera;
+  });
+
+  if (mensagensOut.length === 0) {
+    console.warn(`[Agent] Nada para enviar após filtros`);
+    return;
+  }
+
+  // Assinatura + substituições de vocabulário
+  const mensagensFinal = mensagensOut.map(m => {
+    const limpa = String(m)
+      .replace(/^\s*\*?_?\s*atendente\s+la[íi]s\s+disse\s*:?\s*_?\*?\s*/i, '')
+      .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
+      .replace(/agenda\s+fechada/gi, 'agenda preenchida')
+      .replace(/agendas?\s+est[aá]\s+fechadas?/gi, 'agenda está preenchida')
+      .trim();
+    return `*_Atendente Laís disse:_*\n${limpa}`;
+  });
+
+  try {
+    await evolutionService.sendMessages(phone, mensagensFinal);
+    for (const msg of mensagensFinal) await db.addLog(phone, 'out', msg);
+  } catch (err) {
+    console.error('[Agent] Erro ao enviar mensagens:', err.message);
+  }
 }
 
 // Permite chamar o processamento externamente (ex: retry pelo dashboard)

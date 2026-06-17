@@ -608,6 +608,21 @@
           </div>
         </div>
 
+        <!-- Novo Agente (Tool Calling) -->
+        <div class="card" style="border-color:var(--accent);">
+          <div class="card-title" style="color:var(--accent);">⚡ Novo Agente (Tool Calling)</div>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">
+            Quando ativo, usa a arquitetura nova baseada em <strong>Tool Calling</strong> da OpenAI.
+            Mais robusta — IA não pode mais mandar formatos errados. Recomendado para reduzir bugs.
+          </p>
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+              <input type="checkbox" id="use_agent_chk" style="width:18px;height:18px;cursor:pointer;" />
+              Ativar novo agente
+            </label>
+          </div>
+        </div>
+
         <!-- Modo Teste -->
         <div class="card" style="border-color:var(--yellow);">
           <div class="card-title" style="color:var(--yellow);">🧪 Modo Teste</div>
@@ -888,6 +903,8 @@
     document.getElementById('aniversarioToggle').checked = data.aniversario_ativo === 'true';
     const chk = document.getElementById('test_mode_active_chk');
     if (chk) chk.checked = data.test_mode_active === 'true';
+    const chkAgent = document.getElementById('use_agent_chk');
+    if (chkAgent) chkAgent.checked = data.use_agent === 'true';
     applyIdentity(data);
     loadTokenUsage();
   }
@@ -905,6 +922,8 @@
     // Checkbox do modo teste
     const chk = document.getElementById('test_mode_active_chk');
     if (chk) body.test_mode_active = chk.checked ? 'true' : 'false';
+    const chkAgent = document.getElementById('use_agent_chk');
+    if (chkAgent) body.use_agent = chkAgent.checked ? 'true' : 'false';
 
     const r = await api('/api/config', { method: 'POST', body });
     if (r.success) applyIdentity(body);
