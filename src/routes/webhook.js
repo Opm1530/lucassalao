@@ -1187,15 +1187,26 @@ async function processarComAgent(phone, conv, context) {
     /j[áa]\s+te\s+(?:informo|aviso|retorno)/i, /deixa?\s+eu\s+ver/i,
     /agora\s*,?\s*vamos\s+verificar/i, /s[óo]\s+um\s+(?:momento|minuto|segundo|instante)/i,
   ];
+  const tinhaMensagens = mensagensOut.length > 0;
   mensagensOut = mensagensOut.filter(m => {
     const ehEspera = padroesEspera.some(rx => rx.test(String(m).trim()));
     if (ehEspera) console.warn(`[Agent] Mensagem de espera bloqueada: "${m}"`);
     return !ehEspera;
   });
 
+  // Se o filtro removeu TUDO, não deixar a cliente no silêncio — substitui por mensagem útil
   if (mensagensOut.length === 0) {
-    console.warn(`[Agent] Nada para enviar após filtros`);
-    return;
+    console.warn(`[Agent] Filtro removeu todas as mensagens — usando fallback honesto`);
+    if (result.agendamentosCriados?.length > 0) {
+      const ag = result.agendamentosCriados[0];
+      mensagensOut = [`Seu horário está confirmado para ${ag.data} às ${ag.horario}. ✅`];
+    } else if (result.cancelamentosOk?.length > 0) {
+      mensagensOut = ['Seu horário foi cancelado. 🗓️'];
+    } else if (tinhaMensagens) {
+      mensagensOut = ['Deixa eu confirmar tudo certinho e já te retorno aqui. 😊'];
+    } else {
+      return;
+    }
   }
 
   // Assinatura + substituições de vocabulário

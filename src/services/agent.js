@@ -103,7 +103,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'agendar',
-      description: 'Cria um ou mais agendamentos no Trinks. SOMENTE após a cliente ter confirmado. Para cliente não cadastrada (isCustomer=false), chame criar_cliente ANTES.',
+      description: 'Cria um ou mais agendamentos. SOMENTE após a cliente confirmar. Para cliente não cadastrada (isCustomer=false), chame criar_cliente ANTES. Você passa apenas o NOME do serviço, a data e o horário — o sistema resolve preço, duração e profissional automaticamente.',
       parameters: {
         type: 'object',
         properties: {
@@ -112,15 +112,11 @@ const TOOLS = [
             items: {
               type: 'object',
               properties: {
-                serviceId: { type: 'string' },
-                servico: { type: 'string' },
+                servico: { type: 'string', description: 'Nome do serviço, ex: "Corte"' },
                 data: { type: 'string', description: 'DD/MM/AAAA' },
                 horario: { type: 'string', description: 'HH:MM (hora cheia)' },
-                duracao: { type: 'integer' },
-                preco: { type: 'number' },
-                profissionalId: { type: 'string' },
               },
-              required: ['serviceId', 'servico', 'data', 'horario', 'duracao', 'preco', 'profissionalId'],
+              required: ['servico', 'data', 'horario'],
               additionalProperties: false,
             },
           },
@@ -338,44 +334,64 @@ async function execAgendar(args, state) {
     return { ok: false, erro: 'Cliente não cadastrado. Chame criar_cliente antes de agendar.' };
   }
 
+  // Carrega catálogo uma vez (cacheado) para resolver serviceId/preco/duracao por NOME
+  const catalogo = await trinksService.listarServicos();
+
   const resultados = [];
   for (const item of servicos) {
+    const nomeServ = (item.servico || '').toLowerCase().trim();
+
+    // 1. Resolve o serviço pelo nome (match exato → parcial)
+    let srv = catalogo.find(s => (s.serviceName || '').toLowerCase().trim() === nomeServ);
+    if (!srv) srv = catalogo.find(s => (s.serviceName || '').toLowerCase().includes(nomeServ));
+    if (!srv) {
+      resultados.push({ servico: item.servico, data: item.data, horario: item.horario, ok: false, motivo: `Serviço "${item.servico}" não encontrado no catálogo` });
+      continue;
+    }
+
     const dataISO = item.data.split('/').reverse().join('-');
     const horario = item.horario;
     const dataHoraISO = `${dataISO}T${horario}:00`;
-    const duracao = Number(item.duracao) || 30;
+    const duracao = Number(srv.duracaoMinutos) || 30;
 
-    // IDEMPOTÊNCIA
+    // 2. IDEMPOTÊNCIA — já criamos isso há pouco?
     const acaoRecente = await db.buscarAgendamentoRecente({
-      phone, dataAgendamento: dataISO, horario, servico: item.servico,
+      phone, dataAgendamento: dataISO, horario, servico: srv.serviceName,
     }, 10);
     if (acaoRecente) {
-      resultados.push({ servico: item.servico, data: item.data, horario, ok: true, jaExistia: true, trinksId: acaoRecente.trinks_id });
+      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: true, jaExistia: true, trinksId: acaoRecente.trinks_id });
       continue;
     }
 
-    // Verifica slot livre
-    const checagem = await trinksService.verificarSlotLivre({
-      profissionalId: item.profissionalId, dataHora: dataHoraISO, duracao,
-    });
+    // 3. Resolve o profissional a partir da disponibilidade real desse dia/horário
+    const profSlots = await trinksService.listarDisponibilidade(dataISO);
+    const profDisponivel = profSlots.find(p => (p.horariosDisponiveis || []).includes(horario));
+    if (!profDisponivel) {
+      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: `Horário ${horario} não está disponível em ${item.data}` });
+      continue;
+    }
+    const profissionalId = profDisponivel.profissionalId;
+
+    // 4. Verifica slot livre (considera duração)
+    const checagem = await trinksService.verificarSlotLivre({ profissionalId, dataHora: dataHoraISO, duracao });
     if (!checagem.livre) {
-      resultados.push({ servico: item.servico, data: item.data, horario, ok: false, isConflito: true, motivo: checagem.motivo });
+      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: checagem.motivo });
       continue;
     }
 
-    // Cria com retry
+    // 5. Cria com retry
     let result = null, lastErr = null;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
         result = await trinksService.criarAgendamento({
-          clienteId, servicoId: item.serviceId, profissionalId: item.profissionalId,
-          dataHora: dataHoraISO, duracao, valor: item.preco, observacoes: null,
+          clienteId, servicoId: srv.serviceId, profissionalId,
+          dataHora: dataHoraISO, duracao, valor: srv.servicePrice, observacoes: null,
         });
         if (result?.id) break;
       } catch (err) {
         lastErr = err;
         if (err.isConflito) {
-          resultados.push({ servico: item.servico, data: item.data, horario, ok: false, isConflito: true, motivo: err.message });
+          resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: err.message });
           result = null;
           break;
         }
@@ -384,20 +400,19 @@ async function execAgendar(args, state) {
     }
 
     if (!result?.id) {
-      resultados.push({ servico: item.servico, data: item.data, horario, ok: false, motivo: lastErr?.message || 'sem ID' });
+      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, motivo: lastErr?.message || 'sem ID' });
       continue;
     }
 
     try {
       await db.registrarAcaoBot({
         tipo: 'criado', trinksId: String(result.id), phone, clienteId: String(clienteId),
-        servico: item.servico, dataAgendamento: dataISO, horario,
-        profissionalId: String(item.profissionalId),
+        servico: srv.serviceName, dataAgendamento: dataISO, horario, profissionalId: String(profissionalId),
       });
     } catch { /* silencioso */ }
 
-    state.agendamentosCriados.push({ id: result.id, ...item });
-    resultados.push({ servico: item.servico, data: item.data, horario, ok: true, trinksId: result.id });
+    state.agendamentosCriados.push({ id: result.id, servico: srv.serviceName, data: item.data, horario, preco: srv.servicePrice });
+    resultados.push({ servico: srv.serviceName, data: item.data, horario, preco: srv.servicePrice, ok: true, trinksId: result.id });
   }
 
   return { ok: resultados.every(r => r.ok), resultados };
@@ -405,10 +420,28 @@ async function execAgendar(args, state) {
 
 async function execCancelar(args, state) {
   const { phone, context } = state;
-  const ids = Array.isArray(args.ids) ? args.ids.map(String) : [];
-  const resultados = [];
+  const idsPedidos = Array.isArray(args.ids) ? args.ids.map(String) : [];
+  const clienteId = context.lead?.clienteId || state.clienteCriadoId;
 
-  for (const id of ids) {
+  // VALIDAÇÃO: só cancela IDs que realmente pertencem ao cliente.
+  // Evita o bug de a IA passar o clienteId no lugar do id do agendamento.
+  let agsCliente = [];
+  if (clienteId) {
+    try {
+      agsCliente = await trinksService.listarAgendamentosCliente(clienteId);
+    } catch (err) {
+      console.warn('[Agent] cancelar: falha ao listar agendamentos do cliente:', err.message);
+    }
+  }
+  const idsValidos = new Set(agsCliente.map(a => String(a.id)));
+
+  const resultados = [];
+  for (const id of idsPedidos) {
+    if (idsValidos.size > 0 && !idsValidos.has(id)) {
+      console.warn(`[Agent] cancelar: id ${id} NÃO pertence ao cliente — ignorado. IDs válidos: ${[...idsValidos].join(',')}`);
+      resultados.push({ id, ok: false, erro: 'ID não pertence aos agendamentos do cliente. Use consultar_meus_agendamentos para obter o ID correto.' });
+      continue;
+    }
     try {
       await trinksService.cancelarAgendamento(id);
       resultados.push({ id, ok: true });
@@ -416,7 +449,7 @@ async function execCancelar(args, state) {
       try {
         await db.registrarAcaoBot({
           tipo: 'cancelado', trinksId: id, phone,
-          clienteId: context.lead?.clienteId ? String(context.lead.clienteId) : null,
+          clienteId: clienteId ? String(clienteId) : null,
           servico: null, dataAgendamento: null, horario: null, profissionalId: null,
         });
       } catch { /* silencioso */ }
@@ -600,10 +633,41 @@ async function chat(history, context, phone) {
     }
   }
 
-  // Fallback se nada saiu
+  // Se chegou ao fim sem mensagem, FORÇA a IA a gerar uma resposta com base no que aconteceu
   if (state.mensagensParaEnviar.length === 0) {
-    console.warn(`[Agent] Nenhuma mensagem gerada após ${MAX_ROUNDS} rounds — fallback`);
-    state.mensagensParaEnviar.push('Recebi sua mensagem! Em breve te respondo.');
+    console.warn(`[Agent] Sem mensagem após ${MAX_ROUNDS} rounds — forçando enviar_mensagens`);
+    try {
+      const forced = await client.chat.completions.create({
+        model,
+        messages: [
+          ...messages,
+          { role: 'system', content: 'Gere AGORA a resposta para a cliente com base nos resultados das ferramentas acima. Se algo deu certo, confirme. Se algo falhou, explique de forma honesta e diga que vai pedir para o salão entrar em contato. NUNCA diga "vou verificar" ou "um momento". Chame enviar_mensagens.' },
+        ],
+        tools: [TOOLS[0]], // só enviar_mensagens
+        tool_choice: { type: 'function', function: { name: 'enviar_mensagens' } },
+        temperature: 0.3, max_tokens: 800,
+      });
+      const tc = (forced.choices[0].message.tool_calls || [])[0];
+      if (tc) {
+        const a = JSON.parse(tc.function.arguments || '{}');
+        await execEnviarMensagens(a, state);
+      }
+    } catch (err) {
+      console.error('[Agent] Falha ao forçar mensagem:', err.message);
+    }
+  }
+
+  // Fallback final — só se ainda assim nada saiu. Baseado no que realmente aconteceu.
+  if (state.mensagensParaEnviar.length === 0) {
+    if (state.agendamentosCriados.length > 0) {
+      const ag = state.agendamentosCriados[0];
+      state.mensagensParaEnviar.push(`Seu horário está confirmado para ${ag.data} às ${ag.horario}. ✅`);
+    } else if (state.cancelamentosOk.length > 0) {
+      state.mensagensParaEnviar.push('Seu horário foi cancelado. 🗓️');
+    } else {
+      state.mensagensParaEnviar.push('Tive uma dificuldade técnica agora. 😔');
+      state.mensagensParaEnviar.push('Vou pedir para o salão entrar em contato com você para garantir tudo certinho!');
+    }
   }
 
   return {
