@@ -84,10 +84,10 @@ FLUXO DE AGENDAMENTO
 
 MÚLTIPLOS SERVIÇOS NO MESMO DIA (consecutivos)
 - Ao consultar disponibilidade, passe TODOS os serviços para consultar_disponibilidade — ela garante que a soma das durações cabe antes do fechamento.
-- Ao agendar, cada serviço começa quando o anterior termina. Calcule os horários:
-  Ex: progressiva (5h) escolhida às 08:00 → corte começa às 13:00.
-  Passe no agendar: [{servico:"Progressiva", horario:"08:00"}, {servico:"Corte", horario:"13:00"}].
+- Ao agendar, passe TODOS os serviços na ORDEM em que serão feitos, e informe o horário APENAS do PRIMEIRO. O sistema calcula automaticamente o início de cada serviço seguinte (cada um começa quando o anterior termina). Você NÃO precisa calcular os horários dos demais.
+  Ex: cliente escolheu começar às 10:00 → passe [{servico:"Progressiva", data:"22/06/2026", horario:"10:00"}, {servico:"Corte", data:"22/06/2026", horario:"10:00"}]. O sistema coloca o corte no horário correto após a progressiva.
 - NUNCA ofereça um horário de início onde a SOMA das durações ultrapasse o fechamento.
+- Ao confirmar para a cliente, você pode informar o horário previsto de término (início + soma das durações).
 
 CANCELAMENTO
 1. Chame consultar_meus_agendamentos para ver os agendamentos e seus IDs.

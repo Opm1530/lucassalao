@@ -1249,14 +1249,19 @@ async function processarComAgent(phone, conv, context) {
     return `*_Atendente Laís disse:_*\n${limpa.trim()}`;
   });
 
-  // Link para outros serviços — enviado UMA vez após um agendamento ser criado com sucesso
-  if (result.agendamentosCriados?.length > 0) {
+  // Link para outros serviços — enviado UMA ÚNICA vez por conversa, e SOMENTE
+  // quando TODOS os agendamentos do turno deram certo (sem falhas pendentes).
+  if (result.agendamentosCriados?.length > 0 && !result.algumAgendamentoFalhou) {
     const outroNumero = db.getConfig('whatsapp_outros_servicos');
-    const jaEnviouLink = conv.history.some(m => m.role === 'assistant' && m.content?.includes('wa.me'));
+    // Dedup robusto: procura wa.me tanto no histórico quanto nos logs de saída
+    const jaEnviouLink = conv.history.some(m => m.content?.includes('wa.me'));
     if (outroNumero && !jaEnviouLink) {
       const numeroLimpo = String(outroNumero).replace(/\D/g, '');
       mensagensFinal.push(`*_Atendente Laís disse:_*\nSe quiser marcar outro serviço com um profissional diferente do salão, é só falar por aqui 👇`);
       mensagensFinal.push(`https://wa.me/${numeroLimpo}`);
+      // Marca no histórico para não reenviar em turnos futuros
+      conv.history.push({ role: 'assistant', content: `https://wa.me/${numeroLimpo}`, ts: Date.now() });
+      await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
     }
   }
 

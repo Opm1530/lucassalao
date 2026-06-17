@@ -331,6 +331,11 @@ async function execConsultarMeusAgendamentos(_args, state) {
   };
 }
 
+function minToHHMM(min) {
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 async function execAgendar(args, state) {
   const servicos = Array.isArray(args.servicos) ? args.servicos : [];
   const { phone, context } = state;
@@ -340,52 +345,83 @@ async function execAgendar(args, state) {
     return { ok: false, erro: 'Cliente não cadastrado. Chame criar_cliente antes de agendar.' };
   }
 
-  // Carrega catálogo uma vez (cacheado) para resolver serviceId/preco/duracao por NOME
+  // Carrega catálogo (cacheado) para resolver serviceId/preco/duracao por NOME
   const catalogo = await trinksService.listarServicos();
 
-  const resultados = [];
-  for (const item of servicos) {
-    const nomeServ = (item.servico || '').toLowerCase().trim();
+  // ── FASE 1: Resolver todos os serviços e ENCADEAR os horários ──────────────
+  // O código calcula o início de cada serviço = fim do anterior. A IA só precisa
+  // acertar o horário do PRIMEIRO serviço — o resto é calculado aqui.
+  const itensResolvidos = [];
+  let horarioCorrenteMin = null; // minutos do horário de início acumulado
+  let dataComum = null;
 
-    // 1. Resolve o serviço pelo nome (match exato → parcial)
+  for (let i = 0; i < servicos.length; i++) {
+    const item = servicos[i];
+    const nomeServ = (item.servico || '').toLowerCase().trim();
     let srv = catalogo.find(s => (s.serviceName || '').toLowerCase().trim() === nomeServ);
     if (!srv) srv = catalogo.find(s => (s.serviceName || '').toLowerCase().includes(nomeServ));
     if (!srv) {
-      resultados.push({ servico: item.servico, data: item.data, horario: item.horario, ok: false, motivo: `Serviço "${item.servico}" não encontrado no catálogo` });
+      itensResolvidos.push({ erroResolucao: `Serviço "${item.servico}" não encontrado no catálogo`, servicoNome: item.servico, data: item.data, horario: item.horario });
       continue;
     }
 
-    const dataISO = item.data.split('/').reverse().join('-');
-    const horario = item.horario;
-    const dataHoraISO = `${dataISO}T${horario}:00`;
     const duracao = Number(srv.duracaoMinutos) || 30;
+    const dataISO = (item.data || dataComum || '').split('/').reverse().join('-');
+    dataComum = item.data || dataComum;
 
-    // 2. IDEMPOTÊNCIA — já criamos isso há pouco?
-    const acaoRecente = await db.buscarAgendamentoRecente({
-      phone, dataAgendamento: dataISO, horario, servico: srv.serviceName,
-    }, 10);
-    if (acaoRecente) {
-      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: true, jaExistia: true, trinksId: acaoRecente.trinks_id });
+    // Define horário: o 1º serviço usa o horario informado; os seguintes encadeiam
+    let horario;
+    if (horarioCorrenteMin === null) {
+      const [hh, mm] = (item.horario || '08:00').split(':').map(Number);
+      horarioCorrenteMin = hh * 60 + mm;
+      horario = minToHHMM(horarioCorrenteMin);
+    } else {
+      horario = minToHHMM(horarioCorrenteMin);
+    }
+
+    itensResolvidos.push({
+      srv, duracao, dataISO, dataBR: item.data || dataComum, horario,
+      servicoNome: srv.serviceName, preco: srv.servicePrice, serviceId: srv.serviceId,
+    });
+
+    horarioCorrenteMin += duracao; // próximo serviço começa quando este termina
+  }
+
+  // ── FASE 2: Criar cada agendamento já com o horário encadeado correto ──────
+  const resultados = [];
+  for (const it of itensResolvidos) {
+    if (it.erroResolucao) {
+      resultados.push({ servico: it.servicoNome, data: it.data, horario: it.horario, ok: false, motivo: it.erroResolucao });
       continue;
     }
 
-    // 3. Resolve o profissional a partir da disponibilidade real desse dia/horário
+    const { srv, duracao, dataISO, dataBR, horario } = it;
+    const dataHoraISO = `${dataISO}T${horario}:00`;
+
+    // IDEMPOTÊNCIA
+    const acaoRecente = await db.buscarAgendamentoRecente({ phone, dataAgendamento: dataISO, horario, servico: srv.serviceName }, 10);
+    if (acaoRecente) {
+      resultados.push({ servico: srv.serviceName, data: dataBR, horario, ok: true, jaExistia: true, trinksId: acaoRecente.trinks_id });
+      continue;
+    }
+
+    // Resolve profissional pela disponibilidade real
     const profSlots = await trinksService.listarDisponibilidade(dataISO);
     const profDisponivel = profSlots.find(p => (p.horariosDisponiveis || []).includes(horario));
     if (!profDisponivel) {
-      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: `Horário ${horario} não está disponível em ${item.data}` });
+      resultados.push({ servico: srv.serviceName, data: dataBR, horario, ok: false, isConflito: true, motivo: `Horário ${horario} não está disponível em ${dataBR}` });
       continue;
     }
     const profissionalId = profDisponivel.profissionalId;
 
-    // 4. Verifica slot livre (considera duração)
+    // Verifica slot livre considerando a duração
     const checagem = await trinksService.verificarSlotLivre({ profissionalId, dataHora: dataHoraISO, duracao });
     if (!checagem.livre) {
-      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: checagem.motivo });
+      resultados.push({ servico: srv.serviceName, data: dataBR, horario, ok: false, isConflito: true, motivo: checagem.motivo });
       continue;
     }
 
-    // 5. Cria com retry
+    // Cria com retry
     let result = null, lastErr = null;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
@@ -397,7 +433,7 @@ async function execAgendar(args, state) {
       } catch (err) {
         lastErr = err;
         if (err.isConflito) {
-          resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, isConflito: true, motivo: err.message });
+          resultados.push({ servico: srv.serviceName, data: dataBR, horario, ok: false, isConflito: true, motivo: err.message });
           result = null;
           break;
         }
@@ -406,7 +442,7 @@ async function execAgendar(args, state) {
     }
 
     if (!result?.id) {
-      resultados.push({ servico: srv.serviceName, data: item.data, horario, ok: false, motivo: lastErr?.message || 'sem ID' });
+      resultados.push({ servico: srv.serviceName, data: dataBR, horario, ok: false, motivo: lastErr?.message || 'sem ID' });
       continue;
     }
 
@@ -417,9 +453,12 @@ async function execAgendar(args, state) {
       });
     } catch { /* silencioso */ }
 
-    state.agendamentosCriados.push({ id: result.id, servico: srv.serviceName, data: item.data, horario, preco: srv.servicePrice });
-    resultados.push({ servico: srv.serviceName, data: item.data, horario, preco: srv.servicePrice, ok: true, trinksId: result.id });
+    state.agendamentosCriados.push({ id: result.id, servico: srv.serviceName, data: dataBR, horario, preco: srv.servicePrice });
+    resultados.push({ servico: srv.serviceName, data: dataBR, horario, preco: srv.servicePrice, ok: true, trinksId: result.id });
   }
+
+  // Marca se algum agendamento falhou (usado para decidir o envio do link de outros serviços)
+  if (resultados.some(r => !r.ok)) state.algumAgendamentoFalhou = true;
 
   return { ok: resultados.every(r => r.ok), resultados };
 }
@@ -541,6 +580,7 @@ async function chat(history, context, phone) {
     finalizar: false,
     encaminharHumano: false,
     motivoHumano: null,
+    algumAgendamentoFalhou: false,
   };
 
   // Limpa histórico: se mensagens passadas estão em JSON, extrai só o texto pra não confundir a IA
@@ -684,6 +724,7 @@ async function chat(history, context, phone) {
     finalizar: state.finalizar,
     encaminharHumano: state.encaminharHumano,
     motivoHumano: state.motivoHumano,
+    algumAgendamentoFalhou: state.algumAgendamentoFalhou,
   };
 }
 
