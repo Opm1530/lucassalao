@@ -1209,17 +1209,44 @@ async function processarComAgent(phone, conv, context) {
     }
   }
 
+  // Detectar serviços com múltiplos valores (precisam de "a partir de")
+  // Carrega catálogo (cacheado) e identifica nomes que têm mais de um preço.
+  const servicosComMultiValor = new Set();
+  try {
+    const catalogo = await trinksService.listarServicos();
+    const precosPorNome = {};
+    for (const srv of catalogo) {
+      const nome = (srv.serviceName || '').toLowerCase().trim();
+      if (!nome || typeof srv.servicePrice !== 'number') continue;
+      precosPorNome[nome] = precosPorNome[nome] || new Set();
+      precosPorNome[nome].add(srv.servicePrice);
+    }
+    for (const [nome, precos] of Object.entries(precosPorNome)) {
+      if (precos.size > 1) servicosComMultiValor.add(nome);
+    }
+  } catch { /* sem catálogo, segue sem o reforço */ }
+
   // Assinatura + substituições de vocabulário
   const mensagensFinal = mensagensOut.map(m => {
-    const limpa = String(m)
+    let limpa = String(m)
       .replace(/^\s*\*?_?\s*atendente\s+la[íi]s\s+disse\s*:?\s*_?\*?\s*/i, '')
       .replace(/^\s*\*?\s*la[íi]s\s*:?\s*\*?\s*/i, '')
       .replace(/agenda\s+fechada/gi, 'agenda preenchida')
       .replace(/agendas?\s+est[aá]\s+fechadas?/gi, 'agenda está preenchida')
       // Markdown link [texto](url) → url pura (WhatsApp não renderiza markdown)
-      .replace(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/g, '$1')
-      .trim();
-    return `*_Atendente Laís disse:_*\n${limpa}`;
+      .replace(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/g, '$1');
+
+    // Injeta "a partir de" antes do R$ quando menciona serviço com múltiplos valores
+    for (const nomeServico of servicosComMultiValor) {
+      const rx = new RegExp(`(${nomeServico}[^.!?\\n]*?)(R\\$\\s*\\d)`, 'gi');
+      limpa = limpa.replace(rx, (full, antes, preco) => {
+        if (/a\s+partir\s+de/i.test(antes)) return full; // já tem
+        console.log(`[Agent] Adicionando "a partir de" (serviço "${nomeServico}")`);
+        return `${antes}a partir de ${preco}`;
+      });
+    }
+
+    return `*_Atendente Laís disse:_*\n${limpa.trim()}`;
   });
 
   // Link para outros serviços — enviado UMA vez após um agendamento ser criado com sucesso

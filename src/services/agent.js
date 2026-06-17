@@ -71,17 +71,18 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'consultar_disponibilidade',
-      description: 'Busca horários disponíveis em uma data específica. Use quando a cliente perguntar sobre datas de agendamento. Retorna slots por profissional E por serviço (horas cheias).',
+      description: 'Busca horários disponíveis em uma data. IMPORTANTE: passe os NOMES de TODOS os serviços que a cliente quer fazer nesse dia — o sistema soma as durações e retorna apenas horários onde TODOS cabem antes do fechamento. Ex: progressiva + corte → só horários que comportam as duas durações somadas.',
       parameters: {
         type: 'object',
         properties: {
           data: { type: 'string', description: 'Data no formato AAAA-MM-DD' },
-          serviceId: {
-            type: ['string', 'null'],
-            description: 'Opcional: ID do serviço para filtrar slots compatíveis com a duração. Se null, retorna slots brutos.',
+          servicos: {
+            type: ['array', 'null'],
+            items: { type: 'string' },
+            description: 'Nomes dos serviços que a cliente quer fazer NESSE dia (ex: ["Progressiva", "Corte"]). O sistema soma as durações. Se null, retorna horas cheias sem filtro de duração.',
           },
         },
-        required: ['data', 'serviceId'],
+        required: ['data', 'servicos'],
         additionalProperties: false,
       },
     },
@@ -248,6 +249,24 @@ async function execConsultarDisponibilidade(args, _state) {
   const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
   const profSlots = await trinksService.listarDisponibilidade(data);
 
+  // Soma a duração de TODOS os serviços pedidos (progressiva + corte etc.)
+  let duracaoTotal = 0;
+  let nomesServicos = [];
+  if (Array.isArray(args.servicos) && args.servicos.length > 0) {
+    try {
+      const catalogo = await trinksService.listarServicos();
+      for (const nome of args.servicos) {
+        const alvo = (nome || '').toLowerCase().trim();
+        let srv = catalogo.find(s => (s.serviceName || '').toLowerCase().trim() === alvo);
+        if (!srv) srv = catalogo.find(s => (s.serviceName || '').toLowerCase().includes(alvo));
+        if (srv) {
+          duracaoTotal += Number(srv.duracaoMinutos) || 0;
+          nomesServicos.push(srv.serviceName);
+        }
+      }
+    } catch { /* sem catálogo, segue sem filtro de duração */ }
+  }
+
   // Filtra slots passados se for hoje
   const nowBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
   const todayStr = nowBrasilia.toISOString().split('T')[0];
@@ -262,12 +281,11 @@ async function execConsultarDisponibilidade(args, _state) {
       });
     }
 
-    // Se foi pedido um serviço específico, filtra por duração
-    let slotsValidos = vagos;
-    if (args.serviceId) {
-      // precisa buscar duração do serviço
-      // Não bloqueia se servicos não está em cache; aplica só filtro de hora cheia
-      slotsValidos = vagos.filter(h => h.endsWith(':00'));
+    let slotsValidos;
+    if (duracaoTotal > 0) {
+      // Filtra por duração TOTAL: blocos consecutivos livres + termina antes do fechamento
+      slotsValidos = trinksService.filtrarSlotsPorDuracao(vagos, duracaoTotal, horarioFechamento)
+        .filter(h => h.endsWith(':00'));
     } else {
       slotsValidos = vagos.filter(h => h.endsWith(':00'));
     }
@@ -275,29 +293,17 @@ async function execConsultarDisponibilidade(args, _state) {
     return {
       profissionalId: prof.profissionalId,
       profissionalNome: prof.profissionalNome,
-      horariosDisponiveis: slotsValidos, // só horas cheias
+      horariosDisponiveis: slotsValidos,
     };
   });
-
-  // Se serviceId foi fornecido, faz filtro adicional respeitando duração
-  if (args.serviceId) {
-    try {
-      const servicos = await trinksService.listarServicos();
-      const srv = servicos.find(s => String(s.serviceId) === String(args.serviceId));
-      const duracao = srv?.duracaoMinutos || 60;
-      for (const prof of resultados) {
-        const slotsCompletos = profSlots.find(p => p.profissionalId === prof.profissionalId)?.horariosDisponiveis || [];
-        prof.horariosDisponiveis = trinksService.filtrarSlotsPorDuracao(slotsCompletos, duracao, horarioFechamento)
-          .filter(h => h.endsWith(':00'));
-      }
-    } catch { /* fallback é o que já estava */ }
-  }
 
   const totalSlots = resultados.reduce((a, p) => a + p.horariosDisponiveis.length, 0);
   return {
     ok: true,
     data,
     horarioFechamento,
+    servicosConsiderados: nomesServicos,
+    duracaoTotalMinutos: duracaoTotal,
     totalSlotsDisponiveis: totalSlots,
     indisponivel: totalSlots === 0,
     profissionais: resultados,
