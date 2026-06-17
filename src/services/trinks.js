@@ -854,6 +854,51 @@ function filtrarSlotsPorDuracao(slots, duracaoTotalMinutos, horarioFechamento = 
   });
 }
 
+/**
+ * Contexto MÍNIMO para o agente.
+ * Sem buscar disponibilidade ou agendamentos — o agente puxa via tools quando precisa.
+ * Faz apenas: busca cliente por telefone (com cache curto).
+ */
+async function buildMinimalContext(phone) {
+  const cliente = await buscarClientePorTelefone(phone);
+
+  let lead = {
+    clienteId: null,
+    clienteNome: null,
+    clienteWhatsApp: phone.replace('@s.whatsapp.net', ''),
+    clienteEmail: null,
+  };
+
+  if (cliente) {
+    let dataNascimento = null;
+    const rawNasc = cliente.dataNascimento ?? cliente.data_nascimento ?? null;
+    if (rawNasc) {
+      const d = new Date(rawNasc);
+      if (!isNaN(d)) {
+        dataNascimento = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+      }
+    }
+    lead = {
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      clienteWhatsApp: phone.replace('@s.whatsapp.net', ''),
+      clienteEmail: cliente.email ?? null,
+      dataNascimento,
+    };
+  }
+
+  const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
+
+  return {
+    isCustomer: !!cliente,
+    lead,
+    loja: {
+      estabelecimentoId: db.getConfig('trinks_estabelecimento_id'),
+      horarioFechamento,
+    },
+  };
+}
+
 module.exports = {
   listarServicos,
   listarProfissionais,
@@ -870,4 +915,5 @@ module.exports = {
   criarAgendamento,
   cancelarAgendamento,
   buildContext,
+  buildMinimalContext,
 };

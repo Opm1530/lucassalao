@@ -182,26 +182,57 @@ async function processMessage(phone, text, isLatest = () => true) {
   // e o botão de Retry no dashboard consegue detectar e reprocessar.
   await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
 
-  // Contexto Trinks
+  // ─── PROCESSAMENTO COM AGENTE NOVO (fetch sob demanda) ───────────────────
+  // Se use_agent=true, NÃO chama buildContext pesado — usa só buildMinimalContext.
+  // O agente puxa dados via tools (consultar_servicos, consultar_disponibilidade, etc).
+  if (db.getConfig('use_agent') === 'true') {
+    let minimalContext;
+    try {
+      minimalContext = await trinksService.buildMinimalContext(phone);
+    } catch (err) {
+      console.error('[Agent] Erro no contexto mínimo:', err.message);
+      minimalContext = {
+        isCustomer: false,
+        lead: { clienteId: null, clienteNome: null, clienteWhatsApp: phone.replace('@s.whatsapp.net', ''), clienteEmail: null },
+        loja: { estabelecimentoId: null, horarioFechamento: db.getConfig('horario_fechamento') || '18:00' },
+      };
+    }
+
+    // Overrides de cliente já cadastrado
+    if (conv.client_data) {
+      minimalContext.isCustomer = true;
+      minimalContext.lead.clienteNome     = conv.client_data.nome;
+      minimalContext.lead.clienteWhatsApp = conv.client_data.whatsapp;
+      minimalContext.lead.clienteEmail    = conv.client_data.email;
+      minimalContext.lead.clienteId       = conv.client_data.clienteId;
+    } else if (minimalContext.isCustomer && minimalContext.lead.clienteId) {
+      conv.client_data = {
+        clienteId: minimalContext.lead.clienteId,
+        nome: minimalContext.lead.clienteNome,
+        cpf: null,
+        whatsapp: minimalContext.lead.clienteWhatsApp,
+        email: minimalContext.lead.clienteEmail,
+        dataNascimento: minimalContext.lead.dataNascimento || null,
+      };
+      await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
+      console.log(`[Agent] Cliente Trinks (${minimalContext.lead.clienteNome}) salvo em conv.client_data`);
+    }
+
+    return await processarComAgent(phone, conv, minimalContext);
+  }
+
+  // ─── FLUXO ANTIGO (buildContext completo) ────────────────────────────────
   let context;
   try {
-    // Tenta extrair data do texto (DD/MM ou DD/MM/AAAA)
     let requestedDate = null;
     const dateMatch = text.match(/\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/);
     if (dateMatch) {
       requestedDate = parseDate(dateMatch[0]);
     } else {
-      // Tenta detectar "25 de julho", "5 agosto", etc.
       requestedDate = parseDiaMes(text);
     }
-    if (!requestedDate) {
-      // Tenta detectar "dia 19", "no dia 19", "pro dia 19"
-      requestedDate = parseDiaApenas(text);
-    }
-    if (!requestedDate) {
-      // Tenta detectar dia da semana no texto e converter para data
-      requestedDate = parseDiaSemana(text);
-    }
+    if (!requestedDate) requestedDate = parseDiaApenas(text);
+    if (!requestedDate) requestedDate = parseDiaSemana(text);
     context = await trinksService.buildContext(phone, requestedDate);
   } catch (err) {
     console.error('[Bot] Erro Trinks:', err.message);
@@ -240,12 +271,6 @@ async function processMessage(phone, text, isLatest = () => true) {
     };
     await db.saveConversation(phone, conv.history, conv.stage, conv.client_data);
     console.log(`[Bot] Cliente Trinks (${context.lead.clienteNome}) salvo em conv.client_data para próximos turnos`);
-  }
-
-  // ─── NOVO AGENTE COM TOOL CALLING (feature flag) ────────────────────────
-  // Se use_agent=true, usa o caminho novo (mais robusto). Senão, continua no antigo.
-  if (db.getConfig('use_agent') === 'true') {
-    return await processarComAgent(phone, conv, context);
   }
 
   // OpenAI
@@ -1133,11 +1158,13 @@ async function processarComAgent(phone, conv, context) {
     };
   }
 
-  // Salva resposta no histórico (como assistant turn)
+  // Salva resposta no histórico em TEXTO PURO (não JSON)
+  // Importante: a IA mimica o formato que vê em mensagens anteriores.
+  // Se salvar como JSON, ela passa a responder em JSON.
   if (result.mensagens.length > 0) {
     conv.history.push({
       role: 'assistant',
-      content: JSON.stringify({ mensagens: result.mensagens }),
+      content: result.mensagens.join('\n'),
       ts: Date.now(),
     });
   }

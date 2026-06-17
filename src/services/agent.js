@@ -1,12 +1,23 @@
 /**
- * Agente baseado em Tool Calling da OpenAI.
+ * Agente baseado em Tool Calling com FETCH SOB DEMANDA.
  *
- * Diferenças vs openai.js antigo:
- * - Em vez de a IA retornar JSON estruturado misturando ações e mensagens,
- *   ela chama ferramentas (functions) validadas pela própria OpenAI.
- * - Schema de cada ferramenta é estrito → impossível a IA mandar formato errado.
- * - Validação determinística acontece DENTRO da execução de cada ferramenta.
- * - Mensagens para a cliente são enviadas via tool `enviar_mensagens`.
+ * Princípio: começa com contexto MÍNIMO (só cliente + data atual). Quando a IA
+ * precisa de dados (catálogo de serviços, disponibilidade, agendamentos do cliente),
+ * ela CHAMA UMA FERRAMENTA. Isso reduz drasticamente as chamadas ao Trinks.
+ *
+ * Ferramentas disponíveis:
+ *   CONSULTA (read):
+ *     - consultar_servicos(busca?)
+ *     - consultar_disponibilidade(data)
+ *     - consultar_meus_agendamentos()
+ *   AÇÃO (write):
+ *     - criar_cliente(...)
+ *     - agendar(servicos[])
+ *     - cancelar_agendamento(ids[])
+ *   FLUXO:
+ *     - enviar_mensagens(textos[])     ← SEMPRE para responder a cliente
+ *     - finalizar_conversa()
+ *     - encaminhar_humano(motivo)
  */
 
 const OpenAI = require('openai');
@@ -20,22 +31,18 @@ function getClient() {
   return new OpenAI({ apiKey });
 }
 
-// ─── Definição das ferramentas (schemas para a OpenAI) ───────────────────────
+// ─── Schemas das ferramentas para a OpenAI ────────────────────────────────────
 
 const TOOLS = [
   {
     type: 'function',
     function: {
       name: 'enviar_mensagens',
-      description: 'Envia uma ou mais mensagens curtas para a cliente no WhatsApp. CADA item do array vira uma bolha separada. SEMPRE chame essa ferramenta — é como você se comunica com a cliente.',
+      description: 'Envia mensagens curtas para a cliente no WhatsApp. CADA item do array vira uma bolha separada. SEMPRE chame essa ferramenta quando quiser falar com a cliente.',
       parameters: {
         type: 'object',
         properties: {
-          textos: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'Lista de frases curtas a enviar. Cada item = uma bolha no WhatsApp.',
-          },
+          textos: { type: 'array', items: { type: 'string' } },
         },
         required: ['textos'],
         additionalProperties: false,
@@ -45,24 +52,73 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'consultar_servicos',
+      description: 'Busca o catálogo de serviços oferecidos. Use quando a cliente perguntar preços, durações, ou quando precisar do serviceId para agendar. Pode filtrar por nome.',
+      parameters: {
+        type: 'object',
+        properties: {
+          busca: {
+            type: ['string', 'null'],
+            description: 'Termo opcional para filtrar serviços por nome (ex: "corte", "selagem"). Null = todos.',
+          },
+        },
+        required: ['busca'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_disponibilidade',
+      description: 'Busca horários disponíveis em uma data específica. Use quando a cliente perguntar sobre datas de agendamento. Retorna slots por profissional E por serviço (horas cheias).',
+      parameters: {
+        type: 'object',
+        properties: {
+          data: { type: 'string', description: 'Data no formato AAAA-MM-DD' },
+          serviceId: {
+            type: ['string', 'null'],
+            description: 'Opcional: ID do serviço para filtrar slots compatíveis com a duração. Se null, retorna slots brutos.',
+          },
+        },
+        required: ['data', 'serviceId'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'consultar_meus_agendamentos',
+      description: 'Busca os agendamentos ativos da cliente. Use quando a cliente perguntar sobre horários marcados, antes de cancelar ou remarcar.',
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: [],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'agendar',
-      description: 'Cria um ou mais agendamentos no Trinks. Use APENAS quando a cliente já confirmou explicitamente. Para cliente não cadastrada (isCustomer=false), chame criar_cliente ANTES.',
+      description: 'Cria um ou mais agendamentos no Trinks. SOMENTE após a cliente ter confirmado. Para cliente não cadastrada (isCustomer=false), chame criar_cliente ANTES.',
       parameters: {
         type: 'object',
         properties: {
           servicos: {
             type: 'array',
-            description: 'Lista de agendamentos a criar (um ou mais serviços).',
             items: {
               type: 'object',
               properties: {
-                serviceId: { type: 'string', description: 'ID do serviço do catálogo' },
-                servico: { type: 'string', description: 'Nome do serviço (informativo)' },
-                data: { type: 'string', description: 'Data no formato DD/MM/AAAA' },
-                horario: { type: 'string', description: 'Horário HH:MM (hora cheia)' },
-                duracao: { type: 'integer', description: 'Duração em minutos' },
-                preco: { type: 'number', description: 'Valor em reais' },
-                profissionalId: { type: 'string', description: 'ID do profissional' },
+                serviceId: { type: 'string' },
+                servico: { type: 'string' },
+                data: { type: 'string', description: 'DD/MM/AAAA' },
+                horario: { type: 'string', description: 'HH:MM (hora cheia)' },
+                duracao: { type: 'integer' },
+                preco: { type: 'number' },
+                profissionalId: { type: 'string' },
               },
               required: ['serviceId', 'servico', 'data', 'horario', 'duracao', 'preco', 'profissionalId'],
               additionalProperties: false,
@@ -78,15 +134,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'cancelar_agendamento',
-      description: 'Cancela um ou mais agendamentos existentes. Use os IDs presentes em lead.agendamentos.',
+      description: 'Cancela um ou mais agendamentos existentes. Use IDs vindos de consultar_meus_agendamentos.',
       parameters: {
         type: 'object',
         properties: {
-          ids: {
-            type: 'array',
-            items: { type: 'string' },
-            description: 'IDs dos agendamentos a cancelar',
-          },
+          ids: { type: 'array', items: { type: 'string' } },
         },
         required: ['ids'],
         additionalProperties: false,
@@ -97,7 +149,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'criar_cliente',
-      description: 'Cadastra a cliente no Trinks. USE quando isCustomer=false e você já coletou os dados.',
+      description: 'Cadastra cliente no Trinks. USE quando isCustomer=false e já coletou os dados.',
       parameters: {
         type: 'object',
         properties: {
@@ -116,25 +168,18 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'finalizar_conversa',
-      description: 'Marca a conversa como finalizada. Use após a mensagem de despedida + pedido de feedback.',
-      parameters: {
-        type: 'object',
-        properties: {},
-        required: [],
-        additionalProperties: false,
-      },
+      description: 'Marca a conversa como finalizada. Use após despedida + feedback.',
+      parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
     },
   },
   {
     type: 'function',
     function: {
       name: 'encaminhar_humano',
-      description: 'Encaminha a conversa para atendimento humano. Use para casos fora do escopo (vagas de emprego, parcerias, reclamações, fornecedores).',
+      description: 'Encaminha para humano. Use em vagas, parcerias, reclamações, fornecedores.',
       parameters: {
         type: 'object',
-        properties: {
-          motivo: { type: 'string' },
-        },
+        properties: { motivo: { type: 'string' } },
         required: ['motivo'],
         additionalProperties: false,
       },
@@ -142,12 +187,146 @@ const TOOLS = [
   },
 ];
 
-// ─── Implementação das ferramentas (lógica real) ─────────────────────────────
+// ─── Implementação das ferramentas ───────────────────────────────────────────
 
 async function execEnviarMensagens(args, state) {
   const textos = Array.isArray(args.textos) ? args.textos : [];
-  state.mensagensParaEnviar.push(...textos.filter(t => t && t.trim()));
+  // Defensivo: se a IA mandar um item que é JSON wrapper {"mensagens":[...]} ou
+  // {"textos":[...]}, desempacotar pra não enviar o JSON cru pra cliente.
+  const limpas = [];
+  for (const t of textos) {
+    if (!t || !String(t).trim()) continue;
+    let texto = String(t).trim();
+
+    // Remove aspas extras envolvendo
+    if ((texto.startsWith('"') && texto.endsWith('"')) || (texto.startsWith("'") && texto.endsWith("'"))) {
+      texto = texto.slice(1, -1);
+    }
+
+    // Tenta desempacotar JSON wrappers
+    if (texto.startsWith('{') && texto.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(texto);
+        if (Array.isArray(parsed.mensagens)) {
+          parsed.mensagens.forEach(m => m && limpas.push(String(m).trim()));
+          continue;
+        }
+        if (Array.isArray(parsed.textos)) {
+          parsed.textos.forEach(m => m && limpas.push(String(m).trim()));
+          continue;
+        }
+      } catch { /* não era JSON, segue como texto */ }
+    }
+    limpas.push(texto);
+  }
+  state.mensagensParaEnviar.push(...limpas.filter(Boolean));
   return { ok: true };
+}
+
+async function execConsultarServicos(args, _state) {
+  const servicos = await trinksService.listarServicos();
+  const busca = (args.busca || '').toLowerCase().trim();
+  const lista = busca
+    ? servicos.filter(s => (s.serviceName || '').toLowerCase().includes(busca))
+    : servicos;
+  // Retorna versão enxuta
+  return {
+    ok: true,
+    total: lista.length,
+    servicos: lista.map(s => ({
+      serviceId: s.serviceId,
+      serviceName: s.serviceName,
+      servicePrice: s.servicePrice,
+      duracaoMinutos: s.duracaoMinutos,
+      categoria: s.categoria,
+    })),
+  };
+}
+
+async function execConsultarDisponibilidade(args, _state) {
+  const data = args.data;
+  if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return { ok: false, erro: 'Data inválida. Use AAAA-MM-DD.' };
+  }
+
+  const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
+  const profSlots = await trinksService.listarDisponibilidade(data);
+
+  // Filtra slots passados se for hoje
+  const nowBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const todayStr = nowBrasilia.toISOString().split('T')[0];
+  const currentTime = nowBrasilia.getHours() * 60 + nowBrasilia.getMinutes();
+
+  const resultados = profSlots.map(prof => {
+    let vagos = prof.horariosDisponiveis || [];
+    if (data === todayStr) {
+      vagos = vagos.filter(h => {
+        const [hh, mm] = h.split(':').map(Number);
+        return (hh * 60 + mm) > currentTime;
+      });
+    }
+
+    // Se foi pedido um serviço específico, filtra por duração
+    let slotsValidos = vagos;
+    if (args.serviceId) {
+      // precisa buscar duração do serviço
+      // Não bloqueia se servicos não está em cache; aplica só filtro de hora cheia
+      slotsValidos = vagos.filter(h => h.endsWith(':00'));
+    } else {
+      slotsValidos = vagos.filter(h => h.endsWith(':00'));
+    }
+
+    return {
+      profissionalId: prof.profissionalId,
+      profissionalNome: prof.profissionalNome,
+      horariosDisponiveis: slotsValidos, // só horas cheias
+    };
+  });
+
+  // Se serviceId foi fornecido, faz filtro adicional respeitando duração
+  if (args.serviceId) {
+    try {
+      const servicos = await trinksService.listarServicos();
+      const srv = servicos.find(s => String(s.serviceId) === String(args.serviceId));
+      const duracao = srv?.duracaoMinutos || 60;
+      for (const prof of resultados) {
+        const slotsCompletos = profSlots.find(p => p.profissionalId === prof.profissionalId)?.horariosDisponiveis || [];
+        prof.horariosDisponiveis = trinksService.filtrarSlotsPorDuracao(slotsCompletos, duracao, horarioFechamento)
+          .filter(h => h.endsWith(':00'));
+      }
+    } catch { /* fallback é o que já estava */ }
+  }
+
+  const totalSlots = resultados.reduce((a, p) => a + p.horariosDisponiveis.length, 0);
+  return {
+    ok: true,
+    data,
+    horarioFechamento,
+    totalSlotsDisponiveis: totalSlots,
+    indisponivel: totalSlots === 0,
+    profissionais: resultados,
+  };
+}
+
+async function execConsultarMeusAgendamentos(_args, state) {
+  const clienteId = state.context.lead?.clienteId || state.clienteCriadoId;
+  if (!clienteId) {
+    return { ok: true, total: 0, agendamentos: [], aviso: 'Cliente não cadastrado' };
+  }
+  const ags = await trinksService.listarAgendamentosCliente(clienteId);
+  return {
+    ok: true,
+    total: ags.length,
+    agendamentos: ags.map(a => ({
+      id: a.id,
+      servico: a.servico,
+      profissional: a.profissional,
+      data: a.data,
+      horario: a.horario,
+      duracao: a.duracao,
+      status: a.status,
+    })),
+  };
 }
 
 async function execAgendar(args, state) {
@@ -166,42 +345,31 @@ async function execAgendar(args, state) {
     const dataHoraISO = `${dataISO}T${horario}:00`;
     const duracao = Number(item.duracao) || 30;
 
-    // IDEMPOTÊNCIA: já criamos esse mesmo agendamento recentemente?
+    // IDEMPOTÊNCIA
     const acaoRecente = await db.buscarAgendamentoRecente({
-      phone,
-      dataAgendamento: dataISO,
-      horario,
-      servico: item.servico,
+      phone, dataAgendamento: dataISO, horario, servico: item.servico,
     }, 10);
     if (acaoRecente) {
       resultados.push({ servico: item.servico, data: item.data, horario, ok: true, jaExistia: true, trinksId: acaoRecente.trinks_id });
       continue;
     }
 
-    // Verifica slot livre antes de tentar criar
+    // Verifica slot livre
     const checagem = await trinksService.verificarSlotLivre({
-      profissionalId: item.profissionalId,
-      dataHora: dataHoraISO,
-      duracao,
+      profissionalId: item.profissionalId, dataHora: dataHoraISO, duracao,
     });
     if (!checagem.livre) {
       resultados.push({ servico: item.servico, data: item.data, horario, ok: false, isConflito: true, motivo: checagem.motivo });
       continue;
     }
 
-    // Cria no Trinks com retry
-    let result = null;
-    let lastErr = null;
+    // Cria com retry
+    let result = null, lastErr = null;
     for (let tentativa = 1; tentativa <= 3; tentativa++) {
       try {
         result = await trinksService.criarAgendamento({
-          clienteId,
-          servicoId: item.serviceId,
-          profissionalId: item.profissionalId,
-          dataHora: dataHoraISO,
-          duracao,
-          valor: item.preco,
-          observacoes: null,
+          clienteId, servicoId: item.serviceId, profissionalId: item.profissionalId,
+          dataHora: dataHoraISO, duracao, valor: item.preco, observacoes: null,
         });
         if (result?.id) break;
       } catch (err) {
@@ -220,16 +388,10 @@ async function execAgendar(args, state) {
       continue;
     }
 
-    // Registra no log local
     try {
       await db.registrarAcaoBot({
-        tipo: 'criado',
-        trinksId: String(result.id),
-        phone,
-        clienteId: String(clienteId),
-        servico: item.servico,
-        dataAgendamento: dataISO,
-        horario,
+        tipo: 'criado', trinksId: String(result.id), phone, clienteId: String(clienteId),
+        servico: item.servico, dataAgendamento: dataISO, horario,
         profissionalId: String(item.profissionalId),
       });
     } catch { /* silencioso */ }
@@ -253,14 +415,9 @@ async function execCancelar(args, state) {
       state.cancelamentosOk.push(id);
       try {
         await db.registrarAcaoBot({
-          tipo: 'cancelado',
-          trinksId: id,
-          phone,
+          tipo: 'cancelado', trinksId: id, phone,
           clienteId: context.lead?.clienteId ? String(context.lead.clienteId) : null,
-          servico: null,
-          dataAgendamento: null,
-          horario: null,
-          profissionalId: null,
+          servico: null, dataAgendamento: null, horario: null, profissionalId: null,
         });
       } catch { /* silencioso */ }
     } catch (err) {
@@ -273,17 +430,13 @@ async function execCancelar(args, state) {
 
 async function execCriarCliente(args, state) {
   const { phone } = state;
-  let result = null;
-  let lastErr = null;
+  let result = null, lastErr = null;
 
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
       result = await trinksService.criarCliente({
-        nome: args.nome,
-        cpf: args.cpf,
-        email: args.email,
-        whatsapp: args.whatsapp || phone,
-        dataNascimento: args.data_nascimento,
+        nome: args.nome, cpf: args.cpf, email: args.email,
+        whatsapp: args.whatsapp || phone, dataNascimento: args.data_nascimento,
       });
       if (result?.id) break;
     } catch (err) {
@@ -297,23 +450,23 @@ async function execCriarCliente(args, state) {
   }
 
   state.clienteCriadoId = result.id;
-  state.clienteCriado = { id: result.id, nome: args.nome, cpf: args.cpf, email: args.email, whatsapp: args.whatsapp || phone, data_nascimento: args.data_nascimento };
+  state.clienteCriado = {
+    id: result.id, nome: args.nome, cpf: args.cpf, email: args.email,
+    whatsapp: args.whatsapp || phone, data_nascimento: args.data_nascimento,
+  };
   return { ok: true, clienteId: result.id };
 }
 
-async function execFinalizar(_args, state) {
-  state.finalizar = true;
-  return { ok: true };
-}
-
+async function execFinalizar(_args, state) { state.finalizar = true; return { ok: true }; }
 async function execEncaminharHumano(args, state) {
-  state.encaminharHumano = true;
-  state.motivoHumano = args.motivo;
-  return { ok: true };
+  state.encaminharHumano = true; state.motivoHumano = args.motivo; return { ok: true };
 }
 
 const EXECUTORES = {
   enviar_mensagens: execEnviarMensagens,
+  consultar_servicos: execConsultarServicos,
+  consultar_disponibilidade: execConsultarDisponibilidade,
+  consultar_meus_agendamentos: execConsultarMeusAgendamentos,
   agendar: execAgendar,
   cancelar_agendamento: execCancelar,
   criar_cliente: execCriarCliente,
@@ -323,18 +476,24 @@ const EXECUTORES = {
 
 // ─── Loop principal do agente ────────────────────────────────────────────────
 
-/**
- * Executa o agente para uma mensagem da cliente.
- * Retorna: { mensagens: string[], agendamentosCriados, cancelamentosOk, clienteCriado, finalizar, encaminharHumano }
- */
 async function chat(history, context, phone) {
+  // VERIFICAÇÃO DE LIMITE DIÁRIO DE TOKENS
+  const limite = parseInt(db.getConfig('openai_daily_token_limit') || '0', 10);
+  if (limite > 0) {
+    const uso = await db.getUsoTokenHoje();
+    if (uso.total >= limite) {
+      const err = new Error(`Limite diário de tokens atingido (${uso.total}/${limite})`);
+      err.limiteAtingido = true;
+      throw err;
+    }
+  }
+
   const client = getClient();
   const model = db.getConfig('openai_model') || 'gpt-4o-mini';
+  const isMini = model.includes('mini');
 
-  // Estado mutável que as ferramentas modificam
   const state = {
-    phone,
-    context,
+    phone, context,
     mensagensParaEnviar: [],
     agendamentosCriados: [],
     cancelamentosOk: [],
@@ -345,131 +504,108 @@ async function chat(history, context, phone) {
     motivoHumano: null,
   };
 
-  // Formata histórico — IMPORTANTE: usa só campos role + content (sem JSON exotico)
+  // Limpa histórico: se mensagens passadas estão em JSON, extrai só o texto pra não confundir a IA
+  function limparMensagemHistorico(content) {
+    if (!content) return '';
+    let txt = String(content).trim();
+    if (txt.startsWith('{') && txt.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(txt);
+        if (Array.isArray(parsed.mensagens)) return parsed.mensagens.join('\n');
+        if (Array.isArray(parsed.textos)) return parsed.textos.join('\n');
+      } catch { /* não era JSON */ }
+    }
+    return txt;
+  }
   const historyForApi = history.map(m => ({
     role: m.role,
-    content: m.content || '',
+    content: limparMensagemHistorico(m.content),
   }));
-
   const dateStr = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit',
-    timeZone: 'America/Sao_Paulo',
+    weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Sao_Paulo',
   });
 
-  const messages = [
+  let messages = [
     { role: 'system', content: AGENT_PROMPT },
     { role: 'user', content: buildAgentContext(context, dateStr) },
     ...historyForApi,
   ];
 
-  // ── Round 1: AI planeja e executa ferramentas ──────────────────────────
-  const response = await client.chat.completions.create({
-    model,
-    messages,
-    tools: TOOLS,
-    tool_choice: 'auto',
-    temperature: 0.3,
-    max_tokens: 2000,
-  });
+  // Loop de até 5 rounds — cada round, IA pode chamar ferramentas, receber resultado, e continuar
+  const MAX_ROUNDS = 5;
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    const response = await client.chat.completions.create({
+      model, messages, tools: TOOLS, tool_choice: 'auto',
+      temperature: 0.3, max_tokens: 2000,
+    });
 
-  const usage = response.usage || {};
-  const isMini = model.includes('mini');
-  const custoUSD = ((usage.prompt_tokens || 0) * (isMini ? 0.15 : 2.5) / 1_000_000)
-                 + ((usage.completion_tokens || 0) * (isMini ? 0.60 : 10) / 1_000_000);
-  console.log(`[Agent] R1 model=${model} | in=${usage.prompt_tokens || 0} out=${usage.completion_tokens || 0} | ~$${custoUSD.toFixed(4)}`);
-  db.registrarUsoToken(usage.prompt_tokens || 0, usage.completion_tokens || 0, custoUSD).catch(() => {});
+    const usage = response.usage || {};
+    const custoUSD = ((usage.prompt_tokens || 0) * (isMini ? 0.15 : 2.5) / 1_000_000)
+                   + ((usage.completion_tokens || 0) * (isMini ? 0.60 : 10) / 1_000_000);
+    console.log(`[Agent] R${round} | in=${usage.prompt_tokens || 0} out=${usage.completion_tokens || 0} | ~$${custoUSD.toFixed(4)}`);
+    db.registrarUsoToken(usage.prompt_tokens || 0, usage.completion_tokens || 0, custoUSD).catch(() => {});
 
-  const aiMessage = response.choices[0].message;
-  const toolCalls = aiMessage.tool_calls || [];
+    const aiMessage = response.choices[0].message;
+    const toolCalls = aiMessage.tool_calls || [];
 
-  if (toolCalls.length === 0) {
-    // AI não chamou nenhuma ferramenta — usa content como mensagem fallback
-    if (aiMessage.content) {
-      state.mensagensParaEnviar.push(aiMessage.content);
-    }
-    return finalizarEstado(state);
-  }
-
-  // Executa cada tool call e coleta resultados
-  const toolResults = [];
-  for (const tc of toolCalls) {
-    const name = tc.function?.name;
-    const argsRaw = tc.function?.arguments || '{}';
-    let args = {};
-    try { args = JSON.parse(argsRaw); } catch (e) {
-      console.warn(`[Agent] JSON inválido em tool call ${name}:`, argsRaw);
-    }
-    const exec = EXECUTORES[name];
-    let result;
-    if (!exec) {
-      console.warn(`[Agent] Tool desconhecida: ${name}`);
-      result = { ok: false, erro: `Tool desconhecida: ${name}` };
-    } else {
-      try {
-        result = await exec(args, state);
-        console.log(`[Agent] Tool ${name} executada — ok=${result.ok}`);
-      } catch (err) {
-        console.error(`[Agent] Erro em tool ${name}:`, err.message);
-        result = { ok: false, erro: err.message };
+    // Sem tool calls: AI quer só falar (ou nada)
+    if (toolCalls.length === 0) {
+      if (aiMessage.content && state.mensagensParaEnviar.length === 0) {
+        state.mensagensParaEnviar.push(aiMessage.content);
       }
+      break;
     }
-    toolResults.push({ tool_call_id: tc.id, name, result });
-  }
 
-  // Se já temos mensagens (AI chamou enviar_mensagens junto), encerra
-  if (state.mensagensParaEnviar.length > 0) {
-    return finalizarEstado(state);
-  }
+    // Executa cada tool call
+    const toolResults = [];
+    let chamouEnviarMensagens = false;
+    for (const tc of toolCalls) {
+      const name = tc.function?.name;
+      if (name === 'enviar_mensagens') chamouEnviarMensagens = true;
 
-  // ── Round 2: AI vê os resultados e gera a mensagem para a cliente ──────
-  console.log(`[Agent] Round 2: gerando resposta com base nos resultados das ferramentas`);
-
-  const messagesR2 = [
-    ...messages,
-    aiMessage,
-    ...toolResults.map(tr => ({
-      role: 'tool',
-      tool_call_id: tr.tool_call_id,
-      content: JSON.stringify(tr.result),
-    })),
-  ];
-
-  const response2 = await client.chat.completions.create({
-    model,
-    messages: messagesR2,
-    tools: [TOOLS[0]], // só enviar_mensagens
-    tool_choice: { type: 'function', function: { name: 'enviar_mensagens' } },
-    temperature: 0.3,
-    max_tokens: 1000,
-  });
-
-  const usage2 = response2.usage || {};
-  const custoUSD2 = ((usage2.prompt_tokens || 0) * (isMini ? 0.15 : 2.5) / 1_000_000)
-                  + ((usage2.completion_tokens || 0) * (isMini ? 0.60 : 10) / 1_000_000);
-  console.log(`[Agent] R2 model=${model} | in=${usage2.prompt_tokens || 0} out=${usage2.completion_tokens || 0} | ~$${custoUSD2.toFixed(4)}`);
-  db.registrarUsoToken(usage2.prompt_tokens || 0, usage2.completion_tokens || 0, custoUSD2).catch(() => {});
-
-  const tcsR2 = response2.choices[0].message.tool_calls || [];
-  for (const tc of tcsR2) {
-    if (tc.function?.name === 'enviar_mensagens') {
-      try {
-        const args = JSON.parse(tc.function.arguments || '{}');
-        await execEnviarMensagens(args, state);
-      } catch (e) {
-        console.warn(`[Agent] R2: erro parse enviar_mensagens:`, e.message);
+      let args = {};
+      try { args = JSON.parse(tc.function?.arguments || '{}'); } catch (e) {
+        console.warn(`[Agent] JSON inválido em ${name}:`, e.message);
       }
+
+      const exec = EXECUTORES[name];
+      let result;
+      if (!exec) {
+        result = { ok: false, erro: `Tool desconhecida: ${name}` };
+      } else {
+        try {
+          result = await exec(args, state);
+          console.log(`[Agent] R${round} tool ${name} → ok=${result.ok}`);
+        } catch (err) {
+          console.error(`[Agent] Erro em ${name}:`, err.message);
+          result = { ok: false, erro: err.message };
+        }
+      }
+      toolResults.push({ tool_call_id: tc.id, result });
+    }
+
+    // Se chamou enviar_mensagens, fim — não precisa mais rounds
+    if (chamouEnviarMensagens) {
+      break;
+    }
+
+    // Senão: insere resultados na conversa e continua loop
+    messages.push(aiMessage);
+    for (const tr of toolResults) {
+      messages.push({
+        role: 'tool',
+        tool_call_id: tr.tool_call_id,
+        content: JSON.stringify(tr.result),
+      });
     }
   }
 
-  // Fallback se nem R2 gerou mensagem
+  // Fallback se nada saiu
   if (state.mensagensParaEnviar.length === 0) {
+    console.warn(`[Agent] Nenhuma mensagem gerada após ${MAX_ROUNDS} rounds — fallback`);
     state.mensagensParaEnviar.push('Recebi sua mensagem! Em breve te respondo.');
   }
 
-  return finalizarEstado(state);
-}
-
-function finalizarEstado(state) {
   return {
     mensagens: state.mensagensParaEnviar,
     agendamentosCriados: state.agendamentosCriados,
