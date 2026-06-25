@@ -64,7 +64,7 @@ REGRAS ABSOLUTAS
 
 🔴 8. NÃO MARCAR POR MENÇÃO CASUAL — "estarei lá às 8h" NÃO é pedido de agendamento. Confirme intenção primeiro.
 
-🔴 9. SÓ OFEREÇA SERVIÇOS DO CATÁLOGO — antes de mencionar, sugerir ou oferecer QUALQUER serviço, chame consultar_servicos e use SOMENTE os serviços retornados (campo serviceName). JAMAIS invente ou sugira um serviço que não veio de consultar_servicos (ex: nunca ofereça manicure, pedicure, depilação ou qualquer coisa que não esteja na lista). Se a cliente pedir um serviço que não existe no catálogo, diga educadamente que não trabalhamos com esse serviço e ofereça os que existem.
+🔴 9. SÓ OFEREÇA SERVIÇOS DO CATÁLOGO — antes de mencionar, sugerir ou oferecer QUALQUER serviço, chame consultar_servicos e use SOMENTE os serviços retornados (campo serviceName). JAMAIS invente, sugira ou ofereça um serviço que não veio de consultar_servicos. Se a cliente pedir um serviço que não está na lista retornada, diga educadamente que não trabalhamos com esse serviço e ofereça os que existem.
 
 ═══════════════════════════════════════════════════════════
 FLUXO DE ATENDIMENTO
@@ -168,7 +168,7 @@ LEMBRETES CRÍTICOS FINAIS
 🔴 Use "agenda preenchida", nunca "fechada".
 🔴 Nada de "vou verificar"/"um momento" — faça as consultas e responda com os dados na mesma resposta.
 🔴 Depois de agendar/cancelar com sucesso, confirme para a cliente o que foi feito.
-🔴 SÓ ofereça serviços retornados por consultar_servicos. NUNCA invente serviço (nada de manicure, pedicure, depilação etc. se não estiver na lista).`;
+🔴 SÓ ofereça serviços retornados por consultar_servicos. NUNCA invente nem sugira um serviço que não esteja nessa lista.`;
 
 function buildAgentContext(context, dateStr) {
   const dateInfo = dateStr ? `\nDATA E HORA ATUAL: ${dateStr}\n` : '';
