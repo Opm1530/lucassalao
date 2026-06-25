@@ -66,6 +66,7 @@ function getClient() {
     config._retryCount = config._retryCount || 0;
     if (config._retryCount >= 3) {
       console.error(`[Trinks] 429 após 3 tentativas — desistindo. URL: ${config.url}`);
+      err.rateLimited = true; // sinaliza para abortar o turno sem responder com dados incompletos
       throw err;
     }
 
@@ -370,7 +371,8 @@ async function listarAgendamentosCliente(clienteId) {
       duracao: a.duracaoEmMinutos ?? 0,
       status: a.status ?? 'confirmado',
     }));
-  } catch {
+  } catch (err) {
+    if (err.rateLimited) throw err;
     return [];
   }
 }
@@ -395,7 +397,19 @@ async function listarDisponibilidade(data) {
       params: { pageSize: 100 },
     });
 
-    const items = ensureArray(resp);
+    let items = ensureArray(resp);
+
+    // FILTRO DE PROFISSIONAL — só mostra os profissionais do salão do Lucas.
+    // Config "profissional_filtro" = substring do nome (padrão "lucas").
+    // Vazio/"todos" = sem filtro.
+    const filtroProf = (db.getConfig('profissional_filtro') ?? 'lucas').trim().toLowerCase();
+    if (filtroProf && filtroProf !== 'todos') {
+      const antes = items.length;
+      items = items.filter(p => (p.nome || '').toLowerCase().includes(filtroProf));
+      if (items.length !== antes) {
+        console.log(`[Trinks] Filtro de profissional "${filtroProf}": ${antes} → ${items.length} profissionais`);
+      }
+    }
 
     // CRUZAMENTO: buscar agendamentos do dia e subtrair de horariosVagos
     // (porque o Trinks às vezes retorna slots já ocupados como vagos)
@@ -443,6 +457,8 @@ async function listarDisponibilidade(data) {
       };
     });
   } catch (err) {
+    // Rate-limit esgotado → propaga para abortar o turno (não responder com dados incompletos)
+    if (err.rateLimited) throw err;
     console.error(`[Trinks] Erro ao buscar disponibilidade (${data}):`, err.response?.data ?? err.message);
     return [];
   }
@@ -644,6 +660,7 @@ async function listarAgendamentosPorData(data) {
 
     return agendamentos;
   } catch (err) {
+    if (err.rateLimited) throw err;
     console.error('[Trinks] Erro ao listar agendamentos por data:', err.message);
     return [];
   }

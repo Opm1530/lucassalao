@@ -1142,6 +1142,13 @@ async function processarComAgent(phone, conv, context) {
       console.warn(`[Agent] Limite diário atingido — não responde`);
       return;
     }
+    // 429 do Trinks esgotado → NÃO responder com dados incompletos.
+    // A mensagem da cliente já está salva no histórico; ela pode reenviar ou
+    // o salão pode reprocessar pelo painel quando o Trinks normalizar.
+    if (err.abortarSemResposta || err.rateLimited) {
+      console.warn(`[Agent] Turno abortado por rate-limit do Trinks — nenhuma resposta enviada (evita dado incompleto)`);
+      return;
+    }
     try { await evolutionService.sendText(phone, 'Desculpe, tive um problema interno. Tente novamente em instantes.'); } catch {}
     return;
   }

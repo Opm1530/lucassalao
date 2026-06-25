@@ -297,16 +297,20 @@ async function execConsultarDisponibilidade(args, _state) {
     };
   });
 
-  const totalSlots = resultados.reduce((a, p) => a + p.horariosDisponiveis.length, 0);
+  // Lista CONSOLIDADA — união de todos os horários livres, ordenada e sem duplicar.
+  // É essa lista que a IA deve apresentar (sem nomear profissionais).
+  const horariosConsolidados = [...new Set(resultados.flatMap(p => p.horariosDisponiveis))]
+    .sort((a, b) => a.localeCompare(b));
+
   return {
     ok: true,
     data,
     horarioFechamento,
     servicosConsiderados: nomesServicos,
     duracaoTotalMinutos: duracaoTotal,
-    totalSlotsDisponiveis: totalSlots,
-    indisponivel: totalSlots === 0,
-    profissionais: resultados,
+    horariosDisponiveis: horariosConsolidados, // ← apresentar ESTES à cliente
+    totalSlotsDisponiveis: horariosConsolidados.length,
+    indisponivel: horariosConsolidados.length === 0,
   };
 }
 
@@ -656,6 +660,13 @@ async function chat(history, context, phone) {
           result = await exec(args, state);
           console.log(`[Agent] R${round} tool ${name} → ok=${result.ok}`);
         } catch (err) {
+          // Rate-limit do Trinks → aborta o turno inteiro. Não respondemos com
+          // dados incompletos; o erro sobe para o webhook tratar (sem enviar mensagem).
+          if (err.rateLimited) {
+            console.warn(`[Agent] 429 em ${name} — abortando turno sem responder`);
+            err.abortarSemResposta = true;
+            throw err;
+          }
           console.error(`[Agent] Erro em ${name}:`, err.message);
           result = { ok: false, erro: err.message };
         }
