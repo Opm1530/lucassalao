@@ -126,42 +126,67 @@ function toCache(key, data) {
 async function listarServicos() {
   if (isDemoMode()) return DEMO_DATA.servicos;
 
-  const cached = fromCache('servicos');
-  if (cached) return cached;
+  let servicos = fromCache('servicos');
+  if (!servicos) {
+    const client = getClient();
+    let allItems = [];
+    let page = 1;
+    const pageSize = 100;
 
-  const client = getClient();
-  let allItems = [];
-  let page = 1;
-  const pageSize = 100;
+    while (true) {
+      const { data } = await client.get('/v1/servicos', {
+        params: { pageSize, page, somenteVisiveisCliente: false },
+      });
 
-  while (true) {
-    const { data } = await client.get('/v1/servicos', {
-      params: { pageSize, page, somenteVisiveisCliente: false },
-    });
+      console.log(`[Trinks] Serviços página ${page}: totalPages=${data.totalPages ?? data.TotalPages ?? '?'} totalItems=${data.totalCount ?? data.TotalCount ?? '?'}`);
 
-    console.log(`[Trinks] Serviços página ${page}: totalPages=${data.totalPages ?? data.TotalPages ?? '?'} totalItems=${data.totalCount ?? data.TotalCount ?? '?'}`);
+      const items = ensureArray(data);
+      allItems = allItems.concat(items);
 
-    const items = ensureArray(data);
-    allItems = allItems.concat(items);
+      // PROBE: na primeira página, loga a estrutura crua do 1º serviço para
+      // descobrir o campo que vincula serviço ↔ profissional.
+      if (page === 1 && items[0]) {
+        console.log(`[Trinks][PROBE] Chaves do serviço cru:`, Object.keys(items[0]).join(', '));
+        console.log(`[Trinks][PROBE] Serviço exemplo:`, JSON.stringify(items[0]).slice(0, 800));
+      }
 
-    const totalPages = data.totalPages ?? data.TotalPages ?? 1;
-    if (page >= totalPages || items.length === 0) break;
-    page++;
+      const totalPages = data.totalPages ?? data.TotalPages ?? 1;
+      if (page >= totalPages || items.length === 0) break;
+      page++;
+    }
+
+    servicos = allItems.map((s) => ({
+      serviceId: s.id,
+      serviceName: s.nome,
+      serviceDescription: s.descricao ?? s.observacao ?? '',
+      servicePrice: s.valor ?? s.preco ?? 0,
+      serviceDuracao: s.duracaoEmMinutos ? `${s.duracaoEmMinutos} minutos` : '60 minutos',
+      duracaoMinutos: s.duracaoEmMinutos ?? 60,
+      categoriaId: s.categoriaId ?? null,
+      categoria: s.categoria?.nome ?? '',
+    }));
+
+    // Log das categorias distintas — ajuda a configurar o filtro
+    const porCategoria = {};
+    for (const s of servicos) {
+      const c = s.categoria || '(sem categoria)';
+      porCategoria[c] = (porCategoria[c] || 0) + 1;
+    }
+    console.log(`[Trinks] ${servicos.length} serviços. Categorias:`, JSON.stringify(porCategoria));
+
+    toCache('servicos', servicos);
   }
 
-  const servicos = allItems.map((s) => ({
-    serviceId: s.id,
-    serviceName: s.nome,
-    serviceDescription: s.descricao ?? s.observacao ?? '',
-    servicePrice: s.valor ?? s.preco ?? 0,
-    serviceDuracao: s.duracaoEmMinutos ? `${s.duracaoEmMinutos} minutos` : '60 minutos',
-    duracaoMinutos: s.duracaoEmMinutos ?? 60,
-    categoriaId: s.categoriaId ?? null,
-    categoria: s.categoria?.nome ?? '',
-  }));
+  // FILTRO POR CATEGORIA — config "categorias_servico" (separadas por vírgula).
+  // Se configurado, mantém SOMENTE serviços dessas categorias. Vazio = todos.
+  const filtroRaw = db.getConfig('categorias_servico');
+  if (filtroRaw && filtroRaw.trim()) {
+    const permitidas = filtroRaw.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+    const filtrados = servicos.filter(s => permitidas.includes((s.categoria || '').toLowerCase()));
+    if (filtrados.length > 0) return filtrados;
+    console.warn(`[Trinks] Filtro de categorias "${filtroRaw}" não bateu com nenhum serviço — retornando todos`);
+  }
 
-  console.log(`[Trinks] Total de serviços carregados: ${servicos.length}`);
-  toCache('servicos', servicos);
   return servicos;
 }
 

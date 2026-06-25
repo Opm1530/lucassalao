@@ -42,6 +42,7 @@ router.post('/config', (req, res) => {
     'test_mode_active',
     'test_mode_phone',
     'use_agent',
+    'categorias_servico',
   ];
 
   const toSave = {};
