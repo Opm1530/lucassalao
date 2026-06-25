@@ -143,13 +143,6 @@ async function listarServicos() {
       const items = ensureArray(data);
       allItems = allItems.concat(items);
 
-      // PROBE: na primeira página, loga a estrutura crua do 1º serviço para
-      // descobrir o campo que vincula serviço ↔ profissional.
-      if (page === 1 && items[0]) {
-        console.log(`[Trinks][PROBE] Chaves do serviço cru:`, Object.keys(items[0]).join(', '));
-        console.log(`[Trinks][PROBE] Serviço exemplo:`, JSON.stringify(items[0]).slice(0, 800));
-      }
-
       const totalPages = data.totalPages ?? data.TotalPages ?? 1;
       if (page >= totalPages || items.length === 0) break;
       page++;
@@ -163,7 +156,9 @@ async function listarServicos() {
       serviceDuracao: s.duracaoEmMinutos ? `${s.duracaoEmMinutos} minutos` : '60 minutos',
       duracaoMinutos: s.duracaoEmMinutos ?? 60,
       categoriaId: s.categoriaId ?? null,
-      categoria: s.categoria?.nome ?? '',
+      // Trinks retorna categoria como STRING (ex: "Cabelo"), mas em algumas versões
+      // pode vir como objeto {nome}. Tratamos os dois casos.
+      categoria: typeof s.categoria === 'string' ? s.categoria : (s.categoria?.nome ?? ''),
     }));
 
     // Log das categorias distintas — ajuda a configurar o filtro
