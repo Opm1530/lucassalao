@@ -43,6 +43,8 @@ router.post('/config', (req, res) => {
     'test_mode_phone',
     'use_agent',
     'categorias_servico',
+    'dias_fechados',
+    'profissional_filtro',
   ];
 
   const toSave = {};

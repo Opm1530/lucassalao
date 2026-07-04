@@ -246,6 +246,26 @@ async function execConsultarDisponibilidade(args, _state) {
     return { ok: false, erro: 'Data inválida. Use AAAA-MM-DD.' };
   }
 
+  // DIAS SEM ATENDIMENTO — o salão não abre nesses dias.
+  // Config "dias_fechados" = nomes separados por vírgula (padrão "domingo").
+  const DIAS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+  const [dy, dm, dd] = data.split('-').map(Number);
+  const diaSemana = new Date(Date.UTC(dy, dm - 1, dd)).getUTCDay(); // 0=domingo
+  const fechadosRaw = db.getConfig('dias_fechados') ?? 'domingo';
+  const fechados = fechadosRaw.split(',')
+    .map(s => s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))
+    .filter(Boolean);
+  if (fechados.includes(DIAS[diaSemana])) {
+    const nomeDia = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'][diaSemana];
+    return {
+      ok: true,
+      data,
+      naoAtende: true,
+      motivo: `Não atendemos ${nomeDia === 'domingo' || nomeDia === 'sábado' ? 'aos ' + nomeDia + 's' : 'às ' + nomeDia + 's'}. Ofereça outro dia.`,
+      horariosDisponiveis: [],
+    };
+  }
+
   const horarioFechamento = db.getConfig('horario_fechamento') || '18:00';
   const profSlots = await trinksService.listarDisponibilidade(data);
 
