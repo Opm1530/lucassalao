@@ -3,9 +3,9 @@
  * Dispara mensagens via WhatsApp para clientes com agendamentos pendentes
  * e processa as respostas (confirmar no Trinks ou marcar como faltou).
  *
- * Regras de timing:
- * - Agendamentos às 08:00 ou 09:00 → disparo às 22:00 do dia anterior
- * - Agendamentos a partir das 10:00 → disparo 2 horas antes do horário
+ * Regras de timing (REGRA ÚNICA):
+ * - TODOS os agendamentos → disparo às 18:00 do dia ANTERIOR (hora configurável).
+ * - Prazo para confirmar (marca faltou automático se não responder) → 2h antes do horário.
  */
 
 const db = require('../db/database');
@@ -56,41 +56,28 @@ const MENSAGEM_CONFIRMACAO = (nome, servico, data, horario) => {
 /**
  * Calcula o momento em que a confirmação deve ser disparada.
  *
- * Regras:
- * - 08:00 / 09:00 agendado antes das 18:00 → disparo às 18:00 do mesmo dia
- * - 08:00 / 09:00 agendado após as 18:00   → confirma automaticamente no ato (não dispara)
- * - 10:00 em diante                         → disparo às 18:00 do dia anterior
+ * REGRA ÚNICA (simples e consistente):
+ * - TODOS os agendamentos → disparo às 18:00 do dia ANTERIOR ao agendamento.
+ * - O horário de disparo (hora) é configurável via "hora_disparo_confirmacao" (padrão 18).
+ * - Se o agendamento é hoje e o disparo já passou (véspera), o job envia no próximo tick.
  */
 function calcularMomentoDisparo(dataAgendamento, horario) {
-  const [hh, mm] = horario.split(':').map(Number);
   const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
-
-  if (hh < 10) {
-    // 18:00 do próprio dia do agendamento
-    return new Date(ano, mes - 1, dia, 18, 0, 0);
-  } else {
-    // 18:00 do dia anterior
-    const d = new Date(ano, mes - 1, dia, 18, 0, 0);
-    d.setDate(d.getDate() - 1);
-    return d;
-  }
+  const horaDisparo = parseInt(db.getConfig('hora_disparo_confirmacao') || '18', 10);
+  const d = new Date(ano, mes - 1, dia, horaDisparo, 0, 0);
+  d.setDate(d.getDate() - 1); // dia anterior
+  return d;
 }
 
 /**
- * Calcula o prazo limite para a cliente confirmar.
- *
- * - 08:00 / 09:00 → 22:00 do mesmo dia
- * - 10:00 em diante → 2 horas antes do agendamento
+ * Calcula o prazo limite para a cliente confirmar (usado para marcar faltou automático).
+ * Padrão: 2 horas antes do horário do agendamento (dá o máximo de tempo pra responder).
  */
 function calcularPrazoConfirmacao(dataAgendamento, horario) {
   const [hh, mm] = horario.split(':').map(Number);
   const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
-
-  if (hh < 10) {
-    return new Date(ano, mes - 1, dia, 22, 0, 0);
-  } else {
-    return new Date(ano, mes - 1, dia, hh - 2, mm, 0);
-  }
+  const inicioAgendamento = new Date(ano, mes - 1, dia, hh, mm, 0);
+  return new Date(inicioAgendamento.getTime() - 2 * 60 * 60 * 1000); // 2h antes
 }
 
 function deveDisparar(dataAgendamento, horario, agora) {

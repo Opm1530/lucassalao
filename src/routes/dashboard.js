@@ -45,6 +45,7 @@ router.post('/config', (req, res) => {
     'categorias_servico',
     'dias_fechados',
     'profissional_filtro',
+    'hora_disparo_confirmacao',
   ];
 
   const toSave = {};

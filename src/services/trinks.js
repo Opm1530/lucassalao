@@ -689,8 +689,9 @@ async function marcarFaltou(agendamentoId) {
   }
   const client = getClient();
   try {
-    await client.patch(`/v1/agendamentos/${agendamentoId}/status/faltou`);
-    console.log(`[Trinks] Agendamento ${agendamentoId} marcado como faltou`);
+    // Endpoint correto do Trinks é "clientefaltou" (não "faltou")
+    await client.patch(`/v1/agendamentos/${agendamentoId}/status/clientefaltou`);
+    console.log(`[Trinks] Agendamento ${agendamentoId} marcado como cliente faltou`);
   } catch (err) {
     const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
     console.error(`[Trinks] Falha ao marcar faltou ${agendamentoId}:`, detail);
