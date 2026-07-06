@@ -580,6 +580,25 @@
           </div>
         </div>
 
+        <!-- Funcionamento do Salão -->
+        <div class="card">
+          <div class="card-title">Funcionamento do Salão</div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Horário de fechamento <span style="color:var(--text-muted);font-weight:400">(nenhum serviço pode terminar depois)</span></label>
+              <input type="text" id="horario_fechamento" placeholder="20:00" />
+            </div>
+            <div class="form-group">
+              <label>Dias sem atendimento <span style="color:var(--text-muted);font-weight:400">(separados por vírgula)</span></label>
+              <input type="text" id="dias_fechados" placeholder="domingo" />
+            </div>
+            <div class="form-group">
+              <label>Hora do disparo de confirmação <span style="color:var(--text-muted);font-weight:400">(da véspera, ex: 18)</span></label>
+              <input type="number" id="hora_disparo_confirmacao" placeholder="18" min="0" max="23" />
+            </div>
+          </div>
+        </div>
+
         <!-- OpenAI -->
         <div class="card">
           <div class="card-title">OpenAI</div>
@@ -893,7 +912,8 @@
     const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
-                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone'];
+                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
+                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao'];
     for (const f of fields) {
       const el = document.getElementById(f);
       if (el && data[f]) el.value = data[f];
@@ -913,7 +933,8 @@
     const fields = ['bot_name','salon_name','openai_api_key','openai_model','max_history',
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
-                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone'];
+                    'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
+                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao'];
     const body = {};
     for (const f of fields) {
       const el = document.getElementById(f);
