@@ -362,6 +362,15 @@ async function listarAgendamentosCliente(clienteId) {
     });
 
     const items = ensureArray(data);
+
+    // Status que indicam agendamento NÃO ativo — não devem aparecer para
+    // cancelar/remarcar (senão a IA tenta cancelar algo já cancelado → erro no Trinks).
+    const STATUS_INATIVO = new Set([
+      'cancelado', 'cancelled', 'canceled',
+      'faltou', 'faltou_automatico', 'clientefaltou', 'no_show',
+      'finalizado', 'concluido', 'concluído',
+    ]);
+
     return items.map((a) => ({
       id: a.id,
       servico: a.servico?.nome ?? a.servicoNome ?? '',
@@ -369,8 +378,14 @@ async function listarAgendamentosCliente(clienteId) {
       data: a.dataHoraInicio ? a.dataHoraInicio.split('T')[0] : '',
       horario: a.dataHoraInicio ? a.dataHoraInicio.split('T')[1]?.substring(0, 5) : '',
       duracao: a.duracaoEmMinutos ?? 0,
-      status: a.status ?? 'confirmado',
-    }));
+      status: (a.status?.nome ?? a.statusNome ?? a.status ?? 'aguardando').toString().toLowerCase(),
+    })).filter(a => {
+      if (STATUS_INATIVO.has(a.status)) {
+        console.log(`[Trinks] Ocultando agendamento ${a.id} do cliente (status=${a.status})`);
+        return false;
+      }
+      return true;
+    });
   } catch (err) {
     if (err.rateLimited) throw err;
     return [];
@@ -424,12 +439,6 @@ async function listarDisponibilidade(data) {
 
     return items.map(prof => {
       let vagos = prof.horariosVagos ?? [];
-
-      // PROBE: mostra os horários vagos CRUS do Trinks (antes do nosso cruzamento)
-      console.log(`[Trinks][PROBE] ${prof.nome} vagos CRUS (${data}):`, JSON.stringify(vagos));
-      if (prof.intervalosVagos) {
-        console.log(`[Trinks][PROBE] ${prof.nome} intervalosVagos:`, JSON.stringify(prof.intervalosVagos).slice(0, 500));
-      }
 
       // Filtra agendamentos deste profissional
       const ags = agendamentosDoDia.filter(a =>

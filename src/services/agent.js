@@ -503,6 +503,8 @@ async function execCancelar(args, state) {
     }
   }
   const idsValidos = new Set(agsCliente.map(a => String(a.id)));
+  console.log(`[Agent] cancelar: pedidos=${JSON.stringify(idsPedidos)} | agendamentos do cliente:`,
+    JSON.stringify(agsCliente.map(a => ({ id: a.id, data: a.data, horario: a.horario, status: a.status }))));
 
   const resultados = [];
   for (const id of idsPedidos) {
@@ -624,12 +626,25 @@ async function chat(history, context, phone) {
     role: m.role,
     content: limparMensagemHistorico(m.content),
   }));
-  const dateStr = new Date().toLocaleDateString('pt-BR', {
-    weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Sao_Paulo',
-  });
+  // Data atual + TABELA DE REFERÊNCIA dos próximos 14 dias com dia da semana.
+  // Evita que a IA erre a conta de "quinta = qual dia?" (bug real observado).
+  const DIAS_SEMANA = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+  const hojeBrasilia = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+  const dateStr = `${DIAS_SEMANA[hojeBrasilia.getDay()]}, ${String(hojeBrasilia.getDate()).padStart(2,'0')}/${String(hojeBrasilia.getMonth()+1).padStart(2,'0')}/${hojeBrasilia.getFullYear()}`;
+
+  const calendario = [];
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(hojeBrasilia);
+    d.setDate(d.getDate() + i);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const rotulo = i === 0 ? ' (hoje)' : i === 1 ? ' (amanhã)' : '';
+    calendario.push(`${DIAS_SEMANA[d.getDay()]} ${dd}/${mm}/${d.getFullYear()}${rotulo}`);
+  }
+  const calendarioTexto = `\nCALENDÁRIO DE REFERÊNCIA (use SEMPRE para converter dia da semana em data — NUNCA calcule de cabeça):\n${calendario.join('\n')}\n`;
 
   let messages = [
-    { role: 'system', content: AGENT_PROMPT },
+    { role: 'system', content: AGENT_PROMPT + calendarioTexto },
     { role: 'user', content: buildAgentContext(context, dateStr) },
     ...historyForApi,
   ];
