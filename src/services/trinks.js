@@ -425,6 +425,12 @@ async function listarDisponibilidade(data) {
     return items.map(prof => {
       let vagos = prof.horariosVagos ?? [];
 
+      // PROBE: mostra os horários vagos CRUS do Trinks (antes do nosso cruzamento)
+      console.log(`[Trinks][PROBE] ${prof.nome} vagos CRUS (${data}):`, JSON.stringify(vagos));
+      if (prof.intervalosVagos) {
+        console.log(`[Trinks][PROBE] ${prof.nome} intervalosVagos:`, JSON.stringify(prof.intervalosVagos).slice(0, 500));
+      }
+
       // Filtra agendamentos deste profissional
       const ags = agendamentosDoDia.filter(a =>
         String(a.profissional || '').toLowerCase() === String(prof.nome || '').toLowerCase()

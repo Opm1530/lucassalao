@@ -1153,6 +1153,28 @@ async function processarComAgent(phone, conv, context) {
     return;
   }
 
+  // ── TRAVA ANTI-MENTIRA DE AGENDAMENTO ──────────────────────────────────────
+  // Se a IA afirma que agendou/marcou mas NENHUM agendamento foi criado neste turno,
+  // força uma correção: ela precisa realmente chamar agendar (e criar_cliente se novo).
+  const REGEX_AFIRMA_AGENDOU = /\b(agendei|agendad[oa]|ficou marcad[oa]|est[áa] marcad[oa] para|foi marcad[oa]|seu (corte|hor[áa]rio|agendamento)[^.]{0,40}(agendad|marcad|confirmad)|agendamento (foi )?(realizad|conclu[íi]d|feit|criad))/i;
+  const afirmaAgendou = (result.mensagens || []).some(m => REGEX_AFIRMA_AGENDOU.test(String(m)));
+  if (afirmaAgendou && (result.agendamentosCriados?.length || 0) === 0) {
+    console.warn(`[Agent] IA afirmou agendamento mas NADA foi criado — forçando correção`);
+    conv.history.push({ role: 'assistant', content: (result.mensagens || []).join('\n'), ts: Date.now() });
+    conv.history.push({
+      role: 'user',
+      content: 'SISTEMA: Você disse que o horário está agendado/marcado, mas NENHUM agendamento foi criado de fato (a ferramenta agendar não teve sucesso). NUNCA afirme que agendou sem ter agendado. Se a cliente já escolheu serviço, data e horário — e, se for cliente nova, já passou os dados — chame criar_cliente (se necessário) e depois agendar AGORA, nesta resposta. Se faltar algo ou tiver dado erro, seja honesta e peça o que falta, sem dizer que está agendado.',
+      ts: Date.now(),
+    });
+    try {
+      result = await agentService.chat(conv.history, context, phone);
+      console.log(`[Agent] Após correção: ${result.agendamentosCriados.length} agendados`);
+    } catch (err) {
+      console.error(`[Agent] Erro na correção:`, err.message);
+      if (err.abortarSemResposta || err.rateLimited) return;
+    }
+  }
+
   // Atualiza conv.client_data se um cliente foi criado durante o turno
   if (result.clienteCriado) {
     conv.client_data = {
@@ -1216,23 +1238,6 @@ async function processarComAgent(phone, conv, context) {
     }
   }
 
-  // Detectar serviços com múltiplos valores (precisam de "a partir de")
-  // Carrega catálogo (cacheado) e identifica nomes que têm mais de um preço.
-  const servicosComMultiValor = new Set();
-  try {
-    const catalogo = await trinksService.listarServicos();
-    const precosPorNome = {};
-    for (const srv of catalogo) {
-      const nome = (srv.serviceName || '').toLowerCase().trim();
-      if (!nome || typeof srv.servicePrice !== 'number') continue;
-      precosPorNome[nome] = precosPorNome[nome] || new Set();
-      precosPorNome[nome].add(srv.servicePrice);
-    }
-    for (const [nome, precos] of Object.entries(precosPorNome)) {
-      if (precos.size > 1) servicosComMultiValor.add(nome);
-    }
-  } catch { /* sem catálogo, segue sem o reforço */ }
-
   // Assinatura + substituições de vocabulário
   const mensagensFinal = mensagensOut.map(m => {
     let limpa = String(m)
@@ -1243,15 +1248,11 @@ async function processarComAgent(phone, conv, context) {
       // Markdown link [texto](url) → url pura (WhatsApp não renderiza markdown)
       .replace(/\[[^\]]*\]\((https?:\/\/[^)]+)\)/g, '$1');
 
-    // Injeta "a partir de" antes do R$ quando menciona serviço com múltiplos valores
-    for (const nomeServico of servicosComMultiValor) {
-      const rx = new RegExp(`(${nomeServico}[^.!?\\n]*?)(R\\$\\s*\\d)`, 'gi');
-      limpa = limpa.replace(rx, (full, antes, preco) => {
-        if (/a\s+partir\s+de/i.test(antes)) return full; // já tem
-        console.log(`[Agent] Adicionando "a partir de" (serviço "${nomeServico}")`);
-        return `${antes}a partir de ${preco}`;
-      });
-    }
+    // "A PARTIR DE" EM TODOS OS VALORES — toda menção de "R$ X" recebe "a partir de"
+    // na frente, a menos que já tenha. Remove duplicações de "a partir de a partir de".
+    limpa = limpa.replace(/(a\s+partir\s+de\s+)?(R\$\s*\d[\d.,]*)/gi, (full, jaTem, preco) => {
+      return `a partir de ${preco}`;
+    }).replace(/(a\s+partir\s+de\s+){2,}/gi, 'a partir de ');
 
     return `*_Atendente Laís disse:_*\n${limpa.trim()}`;
   });
