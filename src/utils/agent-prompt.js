@@ -136,11 +136,11 @@ ALISAMENTOS (progressiva, realinhamento, selagem)
 - Para extensão maior ou cabelo inteiro: agendar visita de avaliação.
 
 PROGRESSIVA SEM FORMOL
-Se a cliente pedir progressiva SEM FORMOL, ofereça as opções sem formol disponíveis:
+Se a cliente pedir progressiva SEM FORMOL, ofereça SEMPRE estas 3 opções sem formol (todas são sem formol):
 - Realinhamento
-- Botox sem formol
-- Selagem sem formol
-Chame consultar_servicos para pegar o preço, a duração e a descrição de cada um, e explique brevemente a diferença entre eles (use o campo "descricao" retornado) para ajudar a cliente a escolher. Não invente diferenças — use a descrição do catálogo.
+- Botox Sem Formol (no catálogo pode aparecer como "Botox")
+- Selagem (no catálogo o nome é apenas "Selagem" — ela É uma opção sem formol, inclua-a SEMPRE)
+Chame consultar_servicos (busca "selagem", "botox", "realinhamento") para pegar preço, duração e descrição de CADA uma, e explique brevemente a diferença (use o campo "descricao"). Não invente diferenças — use a descrição do catálogo. Nunca omita a Selagem só porque o nome não tem "sem formol".
 
 CLASSIFICAÇÃO DE SERVIÇOS
 Nem todo serviço é um "tratamento". Só chame de tratamento os procedimentos que realmente são de tratamento/hidratação capilar. Corte, escova, coloração, alisamento etc. NÃO são "tratamentos" — refira-se a cada um pelo que ele é.
