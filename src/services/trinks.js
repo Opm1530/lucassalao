@@ -136,7 +136,7 @@ async function listarServicos() {
 
     while (true) {
       const { data } = await client.get('/v1/servicos', {
-        params: { pageSize, page, somenteVisiveisCliente: false },
+        params: { pageSize, page, somenteVisiveisCliente: true },
       });
 
       console.log(`[Trinks] Serviços página ${page}: totalPages=${data.totalPages ?? data.TotalPages ?? '?'} totalItems=${data.totalCount ?? data.TotalCount ?? '?'}`);

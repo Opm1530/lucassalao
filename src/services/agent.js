@@ -233,6 +233,7 @@ async function execConsultarServicos(args, _state) {
     servicos: lista.map(s => ({
       serviceId: s.serviceId,
       serviceName: s.serviceName,
+      descricao: s.serviceDescription || '',
       servicePrice: s.servicePrice,
       duracaoMinutos: s.duracaoMinutos,
       categoria: s.categoria,
