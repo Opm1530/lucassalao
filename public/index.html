@@ -593,7 +593,11 @@
               <input type="text" id="dias_fechados" placeholder="domingo" />
             </div>
             <div class="form-group">
-              <label>Hora do disparo de confirmação <span style="color:var(--text-muted);font-weight:400">(da véspera, ex: 18)</span></label>
+              <label>Antecedência do disparo <span style="color:var(--text-muted);font-weight:400">(horas antes, no mesmo dia — ex: 2)</span></label>
+              <input type="number" id="antecedencia_disparo_horas" placeholder="2" min="1" max="12" />
+            </div>
+            <div class="form-group">
+              <label>Hora do disparo (horários cedo) <span style="color:var(--text-muted);font-weight:400">(na véspera, ex: 18)</span></label>
               <input type="number" id="hora_disparo_confirmacao" placeholder="18" min="0" max="23" />
             </div>
           </div>
@@ -913,7 +917,7 @@
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
                     'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
-                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao'];
+                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao','antecedencia_disparo_horas'];
     for (const f of fields) {
       const el = document.getElementById(f);
       if (el && data[f]) el.value = data[f];
@@ -934,7 +938,7 @@
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
                     'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
-                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao'];
+                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao','antecedencia_disparo_horas'];
     const body = {};
     for (const f of fields) {
       const el = document.getElementById(f);
