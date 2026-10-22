@@ -7,6 +7,7 @@
 const db = require('../db/database');
 const trinksService = require('./trinks');
 const evolutionService = require('./evolution');
+const { podeEnviarNoModoTeste } = require('./confirmacao');
 
 const MENSAGEM_ANIVERSARIO = (nome) => {
   const primeiroNome = nome ? nome.split(' ')[0] : null;
@@ -24,6 +25,9 @@ async function dispararAniversarios() {
     if (!phone) continue;
 
     const phoneJid = `${phone}@s.whatsapp.net`;
+
+    // TRAVA DE MODO TESTE: não vaza mensagem de aniversário para clientes reais durante testes
+    if (!podeEnviarNoModoTeste(phoneJid)) continue;
 
     if (await db.jaEnviouAniversarioHoje(cliente.id)) continue;
 

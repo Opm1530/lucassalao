@@ -46,6 +46,27 @@ function normalizarPhoneJid(raw) {
   return `${phone}@s.whatsapp.net`;
 }
 
+/**
+ * TRAVA DE MODO TESTE para disparos de saída.
+ * Quando test_mode_active=true, o bot SÓ pode enviar mensagens para o número de teste.
+ * Isso impede que o job de confirmação vaze mensagens para clientes reais durante testes.
+ * Retorna true se pode enviar para esse número, false se deve bloquear.
+ */
+function podeEnviarNoModoTeste(phoneRaw) {
+  if (db.getConfig('test_mode_active') !== 'true') return true; // modo teste desligado → libera geral
+
+  const testPhone = (db.getConfig('test_mode_phone') || '').replace(/\D/g, '');
+  if (!testPhone) return false; // modo teste ligado mas sem número → bloqueia tudo por segurança
+
+  const alvo = String(phoneRaw || '').replace(/\D/g, '');
+  // Compara os últimos 8 dígitos (ignora DDI, DDD e o "9" extra do celular)
+  const match = alvo.slice(-8) === testPhone.slice(-8);
+  if (!match) {
+    console.log(`[Confirmação] MODO TESTE ativo — disparo BLOQUEADO para ${alvo} (só o número de teste ${testPhone} recebe)`);
+  }
+  return match;
+}
+
 const MENSAGEM_CONFIRMACAO = (nome, servico, data, horario) => {
   const [ano, mes, dia] = data.split('-');
   const dataFormatada = `${dia}/${mes}/${ano}`;
@@ -121,6 +142,8 @@ async function verificarEDisparar() {
           console.warn(`[Confirmação] Pulando ${ag.clienteNome} — número inválido: ${ag.clienteWhatsApp}`);
           continue;
         }
+        // TRAVA DE MODO TESTE: não vaza confirmação para clientes reais durante testes
+        if (!podeEnviarNoModoTeste(phoneJid)) continue;
         const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 
         try {
@@ -208,6 +231,11 @@ async function dispararConfirmacoes(dataAgendamento, ids = null) {
       resultados.push({ id: ag.id, status: 'sem_whatsapp', clienteNome: ag.clienteNome });
       continue;
     }
+    // TRAVA DE MODO TESTE: bloqueia disparo manual para números que não são o de teste
+    if (!podeEnviarNoModoTeste(phoneJid)) {
+      resultados.push({ id: ag.id, status: 'bloqueado_modo_teste', clienteNome: ag.clienteNome });
+      continue;
+    }
     const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
 
     try {
@@ -278,4 +306,4 @@ async function processarResposta(phone, texto) {
   return false;
 }
 
-module.exports = { dispararConfirmacoes, verificarEDisparar, confirmarAutomaticamente, processarResposta };
+module.exports = { dispararConfirmacoes, verificarEDisparar, confirmarAutomaticamente, processarResposta, podeEnviarNoModoTeste };
