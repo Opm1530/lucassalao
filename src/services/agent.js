@@ -323,6 +323,8 @@ async function execConsultarDisponibilidade(args, _state) {
   const horariosConsolidados = [...new Set(resultados.flatMap(p => p.horariosDisponiveis))]
     .sort((a, b) => a.localeCompare(b));
 
+  console.log(`[Agent] consultar_disponibilidade ${data} | servicos=${JSON.stringify(nomesServicos)} dur=${duracaoTotal}min fecha=${horarioFechamento} → horários=${JSON.stringify(horariosConsolidados)}`);
+
   return {
     ok: true,
     data,
