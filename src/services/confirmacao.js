@@ -68,67 +68,71 @@ function podeEnviarNoModoTeste(phoneRaw) {
   return match;
 }
 
-const MENSAGEM_CONFIRMACAO = (nome, servico, data, horario) => {
+function dataBR(data) {
   const [ano, mes, dia] = data.split('-');
-  const dataFormatada = `${dia}/${mes}/${ano}`;
+  return `${dia}/${mes}/${ano}`;
+}
+
+const MENSAGEM_CONFIRMACAO = (nome, servico, data, horario) => {
   const primeiroNome = nome ? nome.split(' ')[0] : null;
-  return `Oiê${primeiroNome ? ', ' + primeiroNome : ''}! 😊 Aqui é a Laís, secretária do Studio Lucas Rocha. ✂️\n\nDia ${dataFormatada}, às ${horario}, você tem um encontro marcado com o Lucas para ${servico}! 🌟\n\nPodemos confirmar seu agendamento? Responda *SIM* para confirmar ou *NÃO* caso precise cancelar. 💬`;
+  return `Oiê${primeiroNome ? ', ' + primeiroNome : ''}! 😊 Aqui é a Laís, secretária do Studio Lucas Rocha. ✂️\n\nDia ${dataBR(data)}, às ${horario}, você tem um encontro marcado com o Lucas para ${servico}! 🌟\n\nPodemos confirmar seu agendamento? Responda *SIM* para confirmar ou *NÃO* caso precise cancelar. 💬`;
 };
 
-// Piso da manhã: não disparamos antes disso (acordaria a cliente de madrugada).
-const PISO_MANHA_MIN = 8 * 60; // 08:00
+// Lembrete (1h sem resposta)
+const MENSAGEM_LEMBRETE = (nome, data, horario) => {
+  const primeiroNome = nome ? nome.split(' ')[0] : null;
+  return `Oiê${primeiroNome ? ', ' + primeiroNome : ''}! 😊 Só passando para confirmar seu horário de ${dataBR(data)} às ${horario}.\n\nPodemos confirmar? Responda *SIM* para manter ou *NÃO* caso precise cancelar. 💬`;
+};
+
+// Desmarque automático (3h sem resposta)
+const MENSAGEM_DESMARQUE = (nome, data, horario) => {
+  const primeiroNome = nome ? nome.split(' ')[0] : null;
+  return `Oiê${primeiroNome ? ', ' + primeiroNome : ''}! Como não recebemos sua confirmação, seu horário de ${dataBR(data)} às ${horario} foi liberado. 😊\n\nSe quiser remarcar, é só chamar a gente aqui que marcamos rapidinho! 💛`;
+};
+
+// Tempos de follow-up (configuráveis), em horas, contados a partir da 1ª mensagem.
+function horasLembrete() { return parseFloat(db.getConfig('confirmacao_horas_lembrete') || '1'); }   // 1ª → lembrete
+function horasDesmarque() { return parseFloat(db.getConfig('confirmacao_horas_desmarque') || '3'); } // 1ª → desmarca
 
 /**
  * Calcula o momento em que a confirmação deve ser disparada.
  *
- * REGRA:
- * - Padrão: dispara "antecedencia_disparo_horas" horas ANTES do agendamento, no MESMO dia
- *   (configurável, padrão 2h). Ex: agendamento 14:00 → dispara 12:00.
- * - Exceção (horários cedo): se "X horas antes" cair antes das 08:00 (madrugada), dispara na
- *   VÉSPERA no horário de "hora_disparo_confirmacao" (padrão 18:00). Ex: agendamento 08:00 → véspera 18:00.
+ * REGRA (dois turnos):
+ * - MANHÃ (agendamento antes das 12:00) → dispara na VÉSPERA às "hora_disparo_manha" (padrão 18).
+ * - TARDE (12:00 em diante)             → dispara no MESMO DIA às "hora_disparo_tarde" (padrão 8).
  */
 function calcularMomentoDisparo(dataAgendamento, horario) {
-  const [hh, mm] = horario.split(':').map(Number);
+  const [hh] = horario.split(':').map(Number);
   const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
 
-  const antecedenciaH = parseInt(db.getConfig('antecedencia_disparo_horas') || '2', 10);
-  const inicioMin = hh * 60 + mm;
-  const disparoMin = inicioMin - antecedenciaH * 60;
-
-  if (disparoMin >= PISO_MANHA_MIN) {
-    // Mesmo dia, X horas antes
-    return new Date(ano, mes - 1, dia, Math.floor(disparoMin / 60), disparoMin % 60, 0);
+  if (hh < 12) {
+    // Manhã → véspera (18:00 padrão)
+    const horaManha = parseInt(db.getConfig('hora_disparo_manha') || db.getConfig('hora_disparo_confirmacao') || '18', 10);
+    const d = new Date(ano, mes - 1, dia, horaManha, 0, 0);
+    d.setDate(d.getDate() - 1);
+    return d;
   }
-  // Cedo demais → véspera no horário configurado (padrão 18:00)
-  const horaVespera = parseInt(db.getConfig('hora_disparo_confirmacao') || '18', 10);
-  const d = new Date(ano, mes - 1, dia, horaVespera, 0, 0);
-  d.setDate(d.getDate() - 1);
-  return d;
-}
-
-/**
- * Prazo limite para a cliente confirmar (usado para marcar faltou automático).
- * É o HORÁRIO DO AGENDAMENTO: se não confirmou até a hora marcada, marca faltou.
- * Assim a cliente tem desde o disparo até o horário para responder.
- */
-function calcularPrazoConfirmacao(dataAgendamento, horario) {
-  const [hh, mm] = horario.split(':').map(Number);
-  const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
-  return new Date(ano, mes - 1, dia, hh, mm, 0); // o próprio horário do agendamento
+  // Tarde → mesmo dia (08:00 padrão)
+  const horaTarde = parseInt(db.getConfig('hora_disparo_tarde') || '8', 10);
+  return new Date(ano, mes - 1, dia, horaTarde, 0, 0);
 }
 
 function deveDisparar(dataAgendamento, horario, agora) {
   return agora >= calcularMomentoDisparo(dataAgendamento, horario);
 }
 
-function prazoExpirou(dataAgendamento, horario, agora) {
-  return agora >= calcularPrazoConfirmacao(dataAgendamento, horario);
+// Horas decorridas desde o 1º disparo (enviado_em)
+function horasDesdeDisparo(enviadoEm, agora) {
+  if (!enviadoEm) return 0;
+  return (agora.getTime() - new Date(enviadoEm).getTime()) / (1000 * 60 * 60);
 }
 
 /**
  * Job principal — chamado a cada 30 minutos.
- * 1. Dispara confirmações no momento certo
- * 2. Marca como faltou quem não confirmou até o prazo
+ * Para cada agendamento:
+ *  1. No momento certo → dispara a 1ª mensagem de confirmação.
+ *  2. 1h sem resposta → envia lembrete ("Podemos confirmar?").
+ *  3. 3h sem resposta → avisa que foi liberado e CANCELA no Trinks (libera o horário).
  */
 async function verificarEDisparar() {
   if (db.getConfig('confirmacao_automatica') !== 'true') {
@@ -149,50 +153,59 @@ async function verificarEDisparar() {
     for (const ag of agendamentos) {
       if (!ag.clienteWhatsApp) continue;
 
-      const jaEnviou = await db.jaEnviouDisparo(ag.id);
+      const phoneJid = normalizarPhoneJid(ag.clienteWhatsApp);
+      if (!phoneJid) continue;
+      // TRAVA DE MODO TESTE: não vaza nada para clientes reais durante testes
+      if (!podeEnviarNoModoTeste(phoneJid)) continue;
 
-      // ── Disparar confirmação ──────────────────────────────────────────
-      if (!jaEnviou && deveDisparar(ag.data, ag.horario, agora)) {
-        const phoneJid = normalizarPhoneJid(ag.clienteWhatsApp);
-        if (!phoneJid) {
-          console.warn(`[Confirmação] Pulando ${ag.clienteNome} — número inválido: ${ag.clienteWhatsApp}`);
-          continue;
-        }
-        // TRAVA DE MODO TESTE: não vaza confirmação para clientes reais durante testes
-        if (!podeEnviarNoModoTeste(phoneJid)) continue;
+      const disparo = await db.getDisparo(ag.id);
+
+      // ── 1) Disparo inicial ────────────────────────────────────────────
+      if (!disparo) {
+        if (!deveDisparar(ag.data, ag.horario, agora)) continue;
         const mensagem = MENSAGEM_CONFIRMACAO(ag.clienteNome, ag.servico, ag.data, ag.horario);
-
         try {
           await evolutionService.sendText(phoneJid, mensagem);
           await db.registrarDisparo({
-            agendamentoId: ag.id,
-            phone: phoneJid,
-            clienteNome: ag.clienteNome,
-            servico: ag.servico,
-            dataAgendamento: ag.data,
-            horario: ag.horario,
+            agendamentoId: ag.id, phone: phoneJid, clienteNome: ag.clienteNome,
+            servico: ag.servico, dataAgendamento: ag.data, horario: ag.horario,
           });
           resultados.push({ id: ag.id, status: 'enviado', clienteNome: ag.clienteNome });
-          console.log(`[Confirmação] Disparo → ${ag.clienteNome} | ${ag.data} ${ag.horario}`);
+          console.log(`[Confirmação] 1ª mensagem → ${ag.clienteNome} | ${ag.data} ${ag.horario}`);
         } catch (err) {
-          resultados.push({ id: ag.id, status: 'erro', clienteNome: ag.clienteNome, erro: err.message });
           console.error(`[Confirmação] Erro ao enviar para ${ag.clienteNome}:`, err.message);
         }
+        continue;
       }
 
-      // ── Marcar como faltou se prazo expirou sem confirmação (todos os horários) ──
-      if (jaEnviou && prazoExpirou(ag.data, ag.horario, agora)) {
-        const phoneJidVerif = normalizarPhoneJid(ag.clienteWhatsApp);
-        const disparo = phoneJidVerif ? await db.getDisparoByPhone(phoneJidVerif) : null;
-        if (disparo && disparo.status === 'enviado') {
-          try {
-            await trinksService.marcarFaltou(ag.id);
-            await db.atualizarStatusDisparo(ag.id, 'faltou_automatico');
-            resultados.push({ id: ag.id, status: 'faltou_automatico', clienteNome: ag.clienteNome });
-            console.log(`[Confirmação] Faltou automático → ${ag.clienteNome} | ${ag.data} ${ag.horario}`);
-          } catch (err) {
-            console.error(`[Confirmação] Erro ao marcar faltou para ${ag.clienteNome}:`, err.message);
-          }
+      // Já respondeu (confirmado) ou já foi tratado → nada a fazer
+      if (['confirmado', 'cancelado', 'cancelado_sem_resposta', 'faltou'].includes(disparo.status)) continue;
+
+      const horas = horasDesdeDisparo(disparo.enviado_em, agora);
+
+      // ── 3) Desmarque automático (3h sem resposta) ─────────────────────
+      if (horas >= horasDesmarque() && ['enviado', 'lembrete_enviado'].includes(disparo.status)) {
+        try {
+          await trinksService.cancelarAgendamento(ag.id); // CANCELA (libera o horário), não marca faltou
+          await db.marcarStatusDisparo(ag.id, 'cancelado_sem_resposta');
+          await evolutionService.sendText(phoneJid, MENSAGEM_DESMARQUE(ag.clienteNome, ag.data, ag.horario));
+          resultados.push({ id: ag.id, status: 'cancelado_sem_resposta', clienteNome: ag.clienteNome });
+          console.log(`[Confirmação] Desmarcado por falta de resposta (cancelado) → ${ag.clienteNome} | ${ag.data} ${ag.horario}`);
+        } catch (err) {
+          console.error(`[Confirmação] Erro ao cancelar sem resposta ${ag.clienteNome}:`, err.message);
+        }
+        continue;
+      }
+
+      // ── 2) Lembrete (1h sem resposta) ─────────────────────────────────
+      if (horas >= horasLembrete() && disparo.status === 'enviado') {
+        try {
+          await evolutionService.sendText(phoneJid, MENSAGEM_LEMBRETE(ag.clienteNome, ag.data, ag.horario));
+          await db.marcarStatusDisparo(ag.id, 'lembrete_enviado');
+          resultados.push({ id: ag.id, status: 'lembrete_enviado', clienteNome: ag.clienteNome });
+          console.log(`[Confirmação] Lembrete → ${ag.clienteNome} | ${ag.data} ${ag.horario}`);
+        } catch (err) {
+          console.error(`[Confirmação] Erro ao enviar lembrete ${ag.clienteNome}:`, err.message);
         }
       }
     }
@@ -305,14 +318,16 @@ async function processarResposta(phone, texto) {
 
   if (cancelou) {
     try {
-      await trinksService.marcarFaltou(disparo.agendamento_id);
-      await db.atualizarStatusDisparo(disparo.agendamento_id, 'faltou');
+      // CANCELA (libera o horário no Trinks), não marca "faltou" — assim a IA
+      // reconhece o horário como disponível novamente.
+      await trinksService.cancelarAgendamento(disparo.agendamento_id);
+      await db.atualizarStatusDisparo(disparo.agendamento_id, 'cancelado');
       await evolutionService.sendText(phone,
-        `Tudo bem! Registramos sua ausência. Quando quiser remarcar, é só falar com a gente. 😊`
+        `Tudo bem! Seu horário foi cancelado e liberado. 😊 Quando quiser remarcar, é só falar com a gente!`
       );
-      console.log(`[Confirmação] Agendamento ${disparo.agendamento_id} marcado como faltou por ${phone}`);
+      console.log(`[Confirmação] Agendamento ${disparo.agendamento_id} cancelado (resposta NÃO) por ${phone}`);
     } catch (err) {
-      console.error(`[Confirmação] Erro ao marcar faltou no Trinks:`, err.message);
+      console.error(`[Confirmação] Erro ao cancelar no Trinks:`, err.message);
       await evolutionService.sendText(phone, 'Entendido! Caso queira remarcar, estamos à disposição. 😊');
     }
     return true;

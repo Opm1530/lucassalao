@@ -593,12 +593,20 @@
               <input type="text" id="dias_fechados" placeholder="domingo" />
             </div>
             <div class="form-group">
-              <label>Antecedência do disparo <span style="color:var(--text-muted);font-weight:400">(horas antes, no mesmo dia — ex: 2)</span></label>
-              <input type="number" id="antecedencia_disparo_horas" placeholder="2" min="1" max="12" />
+              <label>Disparo manhã <span style="color:var(--text-muted);font-weight:400">(agend. 8h–11h → na véspera, ex: 18)</span></label>
+              <input type="number" id="hora_disparo_manha" placeholder="18" min="0" max="23" />
             </div>
             <div class="form-group">
-              <label>Hora do disparo (horários cedo) <span style="color:var(--text-muted);font-weight:400">(na véspera, ex: 18)</span></label>
-              <input type="number" id="hora_disparo_confirmacao" placeholder="18" min="0" max="23" />
+              <label>Disparo tarde <span style="color:var(--text-muted);font-weight:400">(agend. 12h+ → mesmo dia, ex: 8)</span></label>
+              <input type="number" id="hora_disparo_tarde" placeholder="8" min="0" max="23" />
+            </div>
+            <div class="form-group">
+              <label>Lembrete após <span style="color:var(--text-muted);font-weight:400">(horas sem resposta, ex: 1)</span></label>
+              <input type="number" id="confirmacao_horas_lembrete" placeholder="1" min="1" max="12" />
+            </div>
+            <div class="form-group">
+              <label>Desmarcar após <span style="color:var(--text-muted);font-weight:400">(horas sem resposta, ex: 3)</span></label>
+              <input type="number" id="confirmacao_horas_desmarque" placeholder="3" min="1" max="24" />
             </div>
           </div>
         </div>
@@ -917,7 +925,7 @@
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
                     'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
-                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao','antecedencia_disparo_horas'];
+                    'horario_fechamento','dias_fechados','hora_disparo_manha','hora_disparo_tarde','confirmacao_horas_lembrete','confirmacao_horas_desmarque'];
     for (const f of fields) {
       const el = document.getElementById(f);
       if (el && data[f]) el.value = data[f];
@@ -938,7 +946,7 @@
                     'trinks_base_url','trinks_api_key','trinks_estabelecimento_id',
                     'evolution_url','evolution_api_key','evolution_instance',
                     'whatsapp_outros_servicos','openai_daily_token_limit','test_mode_phone',
-                    'horario_fechamento','dias_fechados','hora_disparo_confirmacao','antecedencia_disparo_horas'];
+                    'horario_fechamento','dias_fechados','hora_disparo_manha','hora_disparo_tarde','confirmacao_horas_lembrete','confirmacao_horas_desmarque'];
     const body = {};
     for (const f of fields) {
       const el = document.getElementById(f);

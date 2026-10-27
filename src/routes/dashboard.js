@@ -47,6 +47,10 @@ router.post('/config', (req, res) => {
     'profissional_filtro',
     'hora_disparo_confirmacao',
     'antecedencia_disparo_horas',
+    'hora_disparo_manha',
+    'hora_disparo_tarde',
+    'confirmacao_horas_lembrete',
+    'confirmacao_horas_desmarque',
   ];
 
   const toSave = {};

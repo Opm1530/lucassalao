@@ -323,11 +323,31 @@ async function atualizarStatusDisparo(agendamentoId, status) {
 }
 
 async function getDisparoByPhone(phone) {
+  // Considera disparos ainda pendentes de resposta (1ª msg ou lembrete já enviados)
   const { rows } = await pool.query(
-    `SELECT * FROM confirmacao_disparos WHERE phone = $1 AND status = 'enviado' ORDER BY enviado_em DESC LIMIT 1`,
+    `SELECT * FROM confirmacao_disparos
+     WHERE phone = $1 AND status IN ('enviado', 'lembrete_enviado')
+     ORDER BY enviado_em DESC LIMIT 1`,
     [phone]
   );
   return rows[0] || null;
+}
+
+// Retorna o registro completo do disparo de um agendamento (com enviado_em e status)
+async function getDisparo(agendamentoId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM confirmacao_disparos WHERE agendamento_id = $1 LIMIT 1`,
+    [String(agendamentoId)]
+  );
+  return rows[0] || null;
+}
+
+// Atualiza só o status, SEM marcar respondido_em (usado para lembrete/desmarque automático)
+async function marcarStatusDisparo(agendamentoId, status) {
+  await pool.query(
+    `UPDATE confirmacao_disparos SET status = $1 WHERE agendamento_id = $2`,
+    [status, String(agendamentoId)]
+  );
 }
 
 async function listarDisparos(dataAgendamento) {
@@ -358,6 +378,8 @@ module.exports = {
   jaEnviouDisparo,
   atualizarStatusDisparo,
   getDisparoByPhone,
+  getDisparo,
+  marcarStatusDisparo,
   listarDisparos,
   registrarUsoToken,
   getUsoTokenHoje,
