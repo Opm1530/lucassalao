@@ -100,25 +100,35 @@ function horasDesmarque() { return parseFloat(db.getConfig('confirmacao_horas_de
  * REGRA (dois turnos):
  * - MANHÃ (agendamento antes das 12:00) → dispara na VÉSPERA às "hora_disparo_manha" (padrão 18).
  * - TARDE (12:00 em diante)             → dispara no MESMO DIA às "hora_disparo_tarde" (padrão 8).
+ * EXCEÇÃO (agendamento feito em cima da hora / no mesmo dia): se o momento normal acima JÁ PASSOU,
+ *   dispara "antecedencia_disparo_horas" h antes do agendamento (padrão 2h). Ex: marcou 10h para as 13h
+ *   do mesmo dia → confirma às 11h. Garante confirmação mesmo para agendamentos de última hora.
  */
-function calcularMomentoDisparo(dataAgendamento, horario) {
-  const [hh] = horario.split(':').map(Number);
+function calcularMomentoDisparo(dataAgendamento, horario, agora) {
+  const [hh, mm] = horario.split(':').map(Number);
   const [ano, mes, dia] = dataAgendamento.split('-').map(Number);
 
+  let normal;
   if (hh < 12) {
-    // Manhã → véspera (18:00 padrão)
     const horaManha = parseInt(db.getConfig('hora_disparo_manha') || db.getConfig('hora_disparo_confirmacao') || '18', 10);
-    const d = new Date(ano, mes - 1, dia, horaManha, 0, 0);
-    d.setDate(d.getDate() - 1);
-    return d;
+    normal = new Date(ano, mes - 1, dia, horaManha, 0, 0);
+    normal.setDate(normal.getDate() - 1);
+  } else {
+    const horaTarde = parseInt(db.getConfig('hora_disparo_tarde') || '8', 10);
+    normal = new Date(ano, mes - 1, dia, horaTarde, 0, 0);
   }
-  // Tarde → mesmo dia (08:00 padrão)
-  const horaTarde = parseInt(db.getConfig('hora_disparo_tarde') || '8', 10);
-  return new Date(ano, mes - 1, dia, horaTarde, 0, 0);
+
+  // Momento normal ainda não passou → usa ele.
+  if (!agora || agora.getTime() <= normal.getTime()) return normal;
+
+  // Momento normal já passou (agendamento feito no mesmo dia/tarde) → X horas antes do agendamento.
+  const antecedenciaH = parseFloat(db.getConfig('antecedencia_disparo_horas') || '2');
+  const inicio = new Date(ano, mes - 1, dia, hh, mm, 0);
+  return new Date(inicio.getTime() - antecedenciaH * 60 * 60 * 1000);
 }
 
 function deveDisparar(dataAgendamento, horario, agora) {
-  return agora >= calcularMomentoDisparo(dataAgendamento, horario);
+  return agora >= calcularMomentoDisparo(dataAgendamento, horario, agora);
 }
 
 // Horas decorridas desde o 1º disparo (enviado_em)
